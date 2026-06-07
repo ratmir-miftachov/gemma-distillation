@@ -35,7 +35,7 @@ The token must have access to `google/gemma-4-E2B-it`.
 
 ## Run Compression
 
-Edit `COMPRESSION_CONFIG` in `main.py`, then run:
+Edit `CompressionConfig` defaults in `monarch_distill/config.py`, then run:
 
 ```bash
 python main.py
@@ -56,6 +56,17 @@ Outputs:
 
 - TensorBoard: `tensorboard_logs/...`
 - Checkpoints: `monarch_checkpoints.../step_*/unfrozen_weights.pt`
+
+## Code Layout
+
+- `main.py`: thin launcher that preserves the `python main.py` workflow.
+- `monarch_distill/config.py`: typed experiment configuration.
+- `monarch_distill/data.py`: streamed datasets, formatting, tokenization, validation-buffer construction.
+- `monarch_distill/monarch.py`: Monarch layers and model replacement helpers.
+- `monarch_distill/losses.py`: CKA, KL, entropy, and attention KL losses.
+- `monarch_distill/validation.py`: fixed multi-length validation.
+- `monarch_distill/trainer.py`: compression orchestration, resume flow, phase loops.
+- `monarch_distill/io.py`: TensorBoard helpers, profiling logs, checkpoint saving.
 
 ## TensorBoard
 
