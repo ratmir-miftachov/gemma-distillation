@@ -63,14 +63,6 @@ Outputs:
 tensorboard --logdir tensorboard_logs --host 127.0.0.1 --port 6006
 ```
 
-## Optional Evaluation
-
-`eval_hellaswag.py` can load saved Monarch checkpoint weights and evaluate on HellaSwag. Update its checkpoint path or pass arguments as needed:
-
-```bash
-python eval_hellaswag.py --help
-```
-
 ## Notes
 
 - This repo intentionally excludes checkpoints, TensorBoard logs, caches, datasets, and experiment history.
