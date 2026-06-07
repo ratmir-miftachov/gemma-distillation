@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+mlenv/
+
+# Local secrets
+.env
+*.env
+hf_*token*
+*token*
+
+# Model/data caches
+.cache/
+cache/
+hf_cache/
+
+# Experiment outputs
+tensorboard_logs/
+monarch_checkpoints*/
+run_*.log
+*.pt
+*.pth
+*.safetensors
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

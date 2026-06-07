@@ -1,0 +1,7 @@
+accelerate
+datasets
+huggingface_hub
+pillow
+tensorboard
+tqdm
+transformers
