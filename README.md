@@ -1,4 +1,4 @@
-# Gemma Monarch Distillation
+# Gemma Distillation
 
 Minimal code for replacing Gemma MLP linear layers with Monarch-factorized layers and distilling the compressed student against the original teacher.
 
