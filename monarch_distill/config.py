@@ -4,7 +4,7 @@ from typing import Optional
 
 @dataclass
 class CompressionConfig:
-    run_label: str = "b8-2mlp-400p1-800p2-seq512-klnorm-p2lr3e4"
+    run_label: str = "b8-4mlp-400p1-800p2-seq512-klnorm-p2lr3e4-h100spot"
     model_name: str = "google/gemma-4-E2B-it"
     monarch_blocks_weights: int = 128
     monarch_blocks_head_embed: int = 64
@@ -21,9 +21,9 @@ class CompressionConfig:
     tensorboard_log_interval: int = 10
     tensorboard_flush_interval: int = 100
     prefetch_batches: int = 8
-    tensorboard_log_dir: str = "./tensorboard_logs/b8-2mlp-400p1-800p2-seq512-klnorm-p2lr3e4"
-    save_dir: str = "./monarch_checkpoints_b8_2mlp_400p1_800p2_seq512_klnorm_p2lr3e4"
-    max_modules: int = 2
+    tensorboard_log_dir: str = "./tensorboard_logs/b8-4mlp-400p1-800p2-seq512-klnorm-p2lr3e4-h100spot"
+    save_dir: str = "./monarch_checkpoints_b8_4mlp_400p1_800p2_seq512_klnorm_p2lr3e4_h100spot"
+    max_modules: int = 4
     resume_from_checkpoint: Optional[str] = None
     resume_start_module_index: int = 0
     kl_chunk_tokens: int = 256

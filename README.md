@@ -49,7 +49,7 @@ Current default config:
 - `phase2_steps=800`
 - `lr_phase1=5e-4`
 - `lr_phase2=3e-4`
-- `max_modules=2`
+- `max_modules=4`
 - MLP compression only
 
 Outputs:
