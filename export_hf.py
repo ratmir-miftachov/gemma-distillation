@@ -98,6 +98,7 @@ def load_export_model(base_model: str, checkpoint: Path, layer_indices, blocks: 
 
 def write_model_card(output_dir: Path, repo_id: str, base_model: str, layer_indices, parameter_count: int):
     layers = ", ".join(str(index) for index in layer_indices)
+    layer_count = len(layer_indices)
     text = f"""---
 license: apache-2.0
 base_model: {base_model}
@@ -109,7 +110,7 @@ tags:
 - model-compression
 ---
 
-# Gemma 4 E2B Monarch 8-MLP
+# Gemma 4 E2B Monarch {layer_count}-MLP
 
 Experimental Gemma 4 E2B model in which language-model MLP layers {layers} are
 replaced by two-factor rectangular Monarch linear maps. The factors were initialized
@@ -140,7 +141,7 @@ This repository contains custom modeling code, so review it before enabling
 ## Limitations
 
 - This is an experimental compression artifact, not an official Google model.
-- Only eight of the 35 language-model MLPs are compressed.
+- Only {layer_count} of the 35 language-model MLPs are compressed.
 - Quality and inference speed have not been established on broad downstream benchmarks.
 - The model should be evaluated for the intended task before deployment.
 
@@ -152,14 +153,15 @@ the modification summary.
     (output_dir / "README.md").write_text(text, encoding="utf-8")
 
 
-def write_legal_files(output_dir: Path, base_model: str):
+def write_legal_files(output_dir: Path, base_model: str, layer_indices):
     shutil.copy2(Path(__file__).with_name("LICENSE"), output_dir / "LICENSE")
+    layers = ", ".join(str(index) for index in layer_indices)
     notice = f"""Gemma 4 E2B Monarch model
 
 This model is derived from {base_model}.
 
 Modifications:
-- Replaced language-model MLP layers 34 through 27 with two-factor rectangular
+- Replaced language-model MLP layers {layers} with two-factor rectangular
   Monarch linear maps.
 - Initialized factors by rank-one SVD projection of each dense Monarch slice.
 - Distilled the modified layers against the original model.
@@ -209,7 +211,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Export a cumulative Monarch checkpoint as a standalone HF model")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--repo-id", default="hexoy/gemma-4-e2b-monarch-8mlp")
+    parser.add_argument("--repo-id")
     parser.add_argument("--base-model", default="google/gemma-4-E2B-it")
     parser.add_argument("--layers", default="34,33,32,31,30,29,28,27")
     parser.add_argument("--blocks", type=int, default=128)
@@ -220,8 +222,9 @@ def parse_args():
 def main():
     args = parse_args()
     layer_indices = [int(value) for value in args.layers.split(",") if value]
-    if len(layer_indices) != 8 or len(set(layer_indices)) != 8:
-        raise ValueError("the production export requires exactly eight unique compressed layer indices")
+    if not layer_indices or len(set(layer_indices)) != len(layer_indices):
+        raise ValueError("the production export requires one or more unique compressed layer indices")
+    repo_id = args.repo_id or f"hexoy/gemma-4-e2b-monarch-{len(layer_indices)}mlp"
     if not args.checkpoint.is_file():
         raise FileNotFoundError(args.checkpoint)
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
@@ -244,8 +247,8 @@ def main():
     verify_local_round_trip(model, processor, args.output_dir)
 
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
-    write_model_card(args.output_dir, args.repo_id, args.base_model, layer_indices, parameter_count)
-    write_legal_files(args.output_dir, args.base_model)
+    write_model_card(args.output_dir, repo_id, args.base_model, layer_indices, parameter_count)
+    write_legal_files(args.output_dir, args.base_model, layer_indices)
     metadata = {
         "base_model": args.base_model,
         "compressed_layers": layer_indices,
@@ -262,8 +265,8 @@ def main():
     if args.upload:
         if not token:
             raise RuntimeError("HF_TOKEN is required for upload")
-        upload_private(args.output_dir, args.repo_id, token)
-        print(f"[Upload] Private model uploaded to https://huggingface.co/{args.repo_id}")
+        upload_private(args.output_dir, repo_id, token)
+        print(f"[Upload] Private model uploaded to https://huggingface.co/{repo_id}")
     print(f"[Export] Wrote {parameter_count:,} parameters to {args.output_dir}")
 
 

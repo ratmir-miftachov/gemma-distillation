@@ -13,6 +13,11 @@ class HuggingFaceExportTest(unittest.TestCase):
         self.assertEqual(len(checkpoint_tensor_names(layers)), 48)
         self.assertEqual(len(replaced_dense_weight_names(layers)), 24)
 
+    def test_four_layer_checkpoint_contract(self):
+        layers = [34, 33, 32, 31]
+        self.assertEqual(len(checkpoint_tensor_names(layers)), 24)
+        self.assertEqual(len(replaced_dense_weight_names(layers)), 12)
+
     def test_custom_config_round_trip(self):
         config = MonarchGemma4Config(
             monarch_compressed_layers=[34, 33],
