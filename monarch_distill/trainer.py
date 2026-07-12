@@ -125,6 +125,7 @@ class MonarchCompressor:
             module_path,
             self.config.monarch_blocks_weights,
             self.config.monarch_blocks_head_embed,
+            self.config.monarch_init_method,
         )
 
     def run_validation(self, compressed_layer_count: int, mod_path: str):

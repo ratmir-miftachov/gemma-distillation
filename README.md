@@ -49,8 +49,13 @@ Current default config:
 - `phase2_steps=800`
 - `lr_phase1=5e-4`
 - `lr_phase2=3e-4`
+- `monarch_init_method="dense_projection"`
 - `max_modules=4`
 - MLP compression only
+
+`dense_projection` initializes each rectangular Monarch layer with the
+minimum-Frobenius-error rank-one projection of the pretrained dense weight.
+Set `monarch_init_method="identity_noise"` to use the original initializer.
 
 Outputs:
 

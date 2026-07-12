@@ -51,6 +51,44 @@ class MonarchLinear(nn.Module):
         if self.bias is not None:
             nn.init.zeros_(self.bias)
 
+    @torch.no_grad()
+    def initialize_from_dense(self, dense_layer: nn.Linear) -> float:
+        """Project a dense linear map onto this rectangular Monarch layout."""
+        if dense_layer.in_features != self.in_features or dense_layer.out_features != self.out_features:
+            raise ValueError(
+                "dense layer shape does not match Monarch layer: "
+                f"got ({dense_layer.out_features}, {dense_layer.in_features}), "
+                f"expected ({self.out_features}, {self.in_features})"
+            )
+
+        weight = dense_layer.weight.detach().to(device=self.blk1.device, dtype=torch.float32)
+        slices = (
+            weight.reshape(self.n3, self.n2, self.n1, self.n2)
+            .permute(1, 2, 0, 3)
+            .contiguous()
+        )
+        left_vectors, singular_values, right_vectors_h = torch.linalg.svd(slices, full_matrices=False)
+
+        scales = singular_values[..., 0].clamp_min(0.0).sqrt()
+        projected_blk2 = left_vectors[..., :, 0] * scales.unsqueeze(-1)
+        projected_blk1 = right_vectors_h[..., 0, :] * scales.unsqueeze(-1)
+
+        self.blk1.copy_(projected_blk1.permute(1, 2, 0).to(dtype=self.blk1.dtype))
+        self.blk2.copy_(projected_blk2.to(dtype=self.blk2.dtype))
+
+        if self.bias is not None:
+            if dense_layer.bias is None:
+                self.bias.zero_()
+            else:
+                self.bias.copy_(dense_layer.bias.detach().to(device=self.bias.device, dtype=self.bias.dtype))
+
+        squared_singular_values = singular_values.square()
+        total_energy = squared_singular_values.sum()
+        residual_energy = squared_singular_values[..., 1:].sum()
+        if total_energy.item() == 0.0:
+            return 0.0
+        return (residual_energy / total_energy).clamp_min(0.0).sqrt().item()
+
     def forward(self, x):
         orig_shape = x.shape
         x = x.contiguous().view(-1, self.n1, self.n2)
@@ -101,19 +139,32 @@ class MonarchEmbedding(nn.Module):
         return out
 
 
-def replace_linear_with_monarch(module, blocks):
+def replace_linear_with_monarch(module, blocks, init_method="identity_noise", module_path=""):
     for name, child in module.named_children():
+        child_path = f"{module_path}.{name}" if module_path else name
         if isinstance(child, nn.Linear):
             device = child.weight.device
             dtype = child.weight.dtype
             monarch_layer = MonarchLinear(child.in_features, child.out_features, blocks, bias=child.bias is not None)
-            setattr(module, name, monarch_layer.to(device=device, dtype=dtype))
+            monarch_layer = monarch_layer.to(device=device, dtype=dtype)
+            if init_method == "dense_projection":
+                relative_error = monarch_layer.initialize_from_dense(child)
+                print(f"[Projection] {child_path} | relative Frobenius error: {relative_error:.6f}")
+            elif init_method != "identity_noise":
+                raise ValueError(f"unsupported Monarch initialization method: {init_method}")
+            setattr(module, name, monarch_layer)
         else:
-            replace_linear_with_monarch(child, blocks)
+            replace_linear_with_monarch(child, blocks, init_method=init_method, module_path=child_path)
     return module
 
 
-def replace_with_monarch(student_model, module_path: str, blocks_weights: int, blocks_head: int):
+def replace_with_monarch(
+    student_model,
+    module_path: str,
+    blocks_weights: int,
+    blocks_head: int,
+    init_method: str = "identity_noise",
+):
     parent_path = ".".join(module_path.split(".")[:-1])
     child_name = module_path.split(".")[-1]
 
@@ -123,7 +174,13 @@ def replace_with_monarch(student_model, module_path: str, blocks_weights: int, b
     if module_path == "lm_head":
         device, dtype = old_module.weight.device, old_module.weight.dtype
         new_head = MonarchLinear(old_module.in_features, old_module.out_features, blocks_head, bias=old_module.bias is not None)
-        setattr(parent_module, child_name, new_head.to(device=device, dtype=dtype))
+        new_head = new_head.to(device=device, dtype=dtype)
+        if init_method == "dense_projection":
+            relative_error = new_head.initialize_from_dense(old_module)
+            print(f"[Projection] {module_path} | relative Frobenius error: {relative_error:.6f}")
+        elif init_method != "identity_noise":
+            raise ValueError(f"unsupported Monarch initialization method: {init_method}")
+        setattr(parent_module, child_name, new_head)
         return getattr(parent_module, child_name)
 
     if "embed_tokens" in module_path:
@@ -132,5 +189,10 @@ def replace_with_monarch(student_model, module_path: str, blocks_weights: int, b
         setattr(parent_module, child_name, new_embed.to(device=device, dtype=dtype))
         return getattr(parent_module, child_name)
 
-    replace_linear_with_monarch(old_module, blocks_weights)
+    replace_linear_with_monarch(
+        old_module,
+        blocks_weights,
+        init_method=init_method,
+        module_path=module_path,
+    )
     return old_module
