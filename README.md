@@ -8,7 +8,7 @@ Minimal code for replacing Gemma MLP linear layers with Monarch-factorized layer
 - Replaces selected student MLP layers with Monarch-linear modules.
 - Phase 1 trains the newly replaced MLP locally with activation CKA loss.
 - Phase 2 globally repairs the student with full-model logit KL distillation.
-- Evaluates distillation loss on a fixed validation buffer at sequence lengths 64, 128, 256, and 512.
+- Evaluates distillation loss on a fixed 64-example validation buffer at sequence length 512.
 - Writes TensorBoard logs and layer checkpoints locally.
 
 ## Setup
@@ -50,7 +50,7 @@ Current default config:
 - `lr_phase1=5e-4`
 - `lr_phase2=3e-4`
 - `monarch_init_method="dense_projection"`
-- `max_modules=4`
+- `max_modules=8`
 - MLP compression only
 
 `dense_projection` initializes each rectangular Monarch layer with the
@@ -72,6 +72,27 @@ Outputs:
 - `monarch_distill/validation.py`: fixed multi-length validation.
 - `monarch_distill/trainer.py`: compression orchestration, resume flow, phase loops.
 - `monarch_distill/io.py`: TensorBoard helpers, profiling logs, checkpoint saving.
+
+## Export A Standalone Model
+
+After all eight cumulative checkpoints are complete, export the final checkpoint as a
+standard sharded Hugging Face model with custom Monarch modeling code:
+
+```bash
+python export_hf.py \
+  --checkpoint monarch_checkpoints_b8_8mlp_400p1_800p2_seq512_projinit_p2lr3e4_h100spot/step_007_model_language_model_layers_27_mlp/unfrozen_weights.pt \
+  --output-dir gemma-4-e2b-monarch-8mlp-export \
+  --repo-id hexoy/gemma-4-e2b-monarch-8mlp \
+  --upload
+```
+
+The exporter refuses non-cumulative or incorrectly shaped checkpoints and refuses to
+upload if the destination repository is public. Verify a local directory or private
+Hub model from a clean cache with:
+
+```bash
+python verify_hf_model.py hexoy/gemma-4-e2b-monarch-8mlp
+```
 
 ## TensorBoard
 

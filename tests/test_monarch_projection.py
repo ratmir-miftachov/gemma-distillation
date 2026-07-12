@@ -56,6 +56,12 @@ class DenseProjectionTest(unittest.TestCase):
         self.assertLessEqual(projected_error.item(), baseline_error.item())
         self.assertAlmostEqual(reported_error, measured_relative_error.item(), places=5)
 
+    def test_meta_device_construction(self):
+        with torch.device("meta"):
+            layer = MonarchLinear(12, 24, 3, bias=False)
+        self.assertTrue(layer.blk1.is_meta)
+        self.assertTrue(layer.blk2.is_meta)
+
 
 if __name__ == "__main__":
     unittest.main()

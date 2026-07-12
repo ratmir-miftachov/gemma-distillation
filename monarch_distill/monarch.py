@@ -30,6 +30,11 @@ class MonarchLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        # Hugging Face constructs modules on the meta device for low-memory loading.
+        # The serialized factors materialize them later, so there is nothing to initialize yet.
+        if self.blk1.is_meta:
+            return
+
         nn.init.zeros_(self.blk1)
         nn.init.zeros_(self.blk2)
 

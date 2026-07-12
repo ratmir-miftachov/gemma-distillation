@@ -2,6 +2,7 @@ accelerate
 datasets
 huggingface_hub
 pillow
+safetensors
 tensorboard
 tqdm
 transformers
