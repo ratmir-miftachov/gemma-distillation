@@ -24,6 +24,7 @@ hf_cache/
 tensorboard_logs/
 monarch_checkpoints*/
 run_*.log
+benchmark_results/
 *.pt
 *.pth
 *.safetensors

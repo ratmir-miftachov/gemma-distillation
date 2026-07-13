@@ -135,6 +135,36 @@ python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
 tensorboard --logdir tensorboard_logs --host 127.0.0.1 --port 6006
 ```
 
+## TinyHellaSwag Benchmark
+
+Install the separately pinned benchmark environment:
+
+```bash
+pip install -r requirements-benchmark.txt
+```
+
+Run the official 100-example, 10-shot `tinyHellaswag` task. The evaluator uses
+raw continuation prompts for both models and selects the appropriate Hugging
+Face Auto class automatically:
+
+```bash
+python benchmark_tinyhellaswag.py --model google/gemma-4-E2B-it
+python benchmark_tinyhellaswag.py --model hexoy/gemma-4-e2b-monarch-4mlp
+```
+
+Each run writes `result.json` and the underlying `lm_eval_results.json` beneath
+`benchmark_results/tinyhellaswag/`. Compare two runs with:
+
+```bash
+python compare_tinyhellaswag.py \
+  benchmark_results/tinyhellaswag/google-gemma-4-E2B-it/<timestamp>/result.json \
+  benchmark_results/tinyhellaswag/hexoy-gemma-4-e2b-monarch-4mlp/<timestamp>/result.json \
+  --output comparison.json
+```
+
+The comparison reports official GP-IRT and raw-accuracy deltas, item-level
+disagreements, a paired bootstrap confidence interval, and exact McNemar test.
+
 ## Notes
 
 - This repo intentionally excludes checkpoints, TensorBoard logs, caches, datasets, and experiment history.
