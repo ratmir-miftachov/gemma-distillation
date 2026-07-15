@@ -1,10 +1,128 @@
 import os
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 
 from .losses import calculate_shannon_entropy
+
+
+@dataclass(frozen=True)
+class ScalarEventRecord:
+    tag: str
+    step: int
+    wall_time: float
+    value: float
+    source_order: int
+
+
+def discover_tensorboard_event_files(inputs):
+    event_files = []
+    for raw_path in inputs:
+        path = Path(raw_path)
+        if path.is_file() and path.name.startswith("events.out.tfevents."):
+            event_files.append(path)
+        elif path.is_dir():
+            event_files.extend(sorted(path.rglob("events.out.tfevents.*")))
+        else:
+            raise FileNotFoundError(f"TensorBoard input does not exist or is not an event file: {path}")
+
+    unique_files = []
+    seen = set()
+    for path in event_files:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_files.append(path)
+    if not unique_files:
+        raise FileNotFoundError("no TensorBoard event files were found")
+    return unique_files
+
+
+def read_scalar_events(event_files):
+    from tensorboard.backend.event_processing import event_accumulator
+    from tensorboard.util import tensor_util
+
+    records = {}
+    for source_order, event_file in enumerate(event_files):
+        accumulator = event_accumulator.EventAccumulator(
+            str(event_file),
+            size_guidance={
+                event_accumulator.SCALARS: 0,
+                event_accumulator.TENSORS: 0,
+            },
+        )
+        accumulator.Reload()
+        tags = accumulator.Tags()
+
+        for tag in tags.get("scalars", []):
+            for event in accumulator.Scalars(tag):
+                record = ScalarEventRecord(tag, int(event.step), float(event.wall_time), float(event.value), source_order)
+                key = (record.tag, record.step)
+                previous = records.get(key)
+                if previous is None or (record.wall_time, record.source_order) >= (
+                    previous.wall_time,
+                    previous.source_order,
+                ):
+                    records[key] = record
+
+        for tag in tags.get("tensors", []):
+            for event in accumulator.Tensors(tag):
+                value = tensor_util.make_ndarray(event.tensor_proto)
+                if value.size != 1:
+                    continue
+                record = ScalarEventRecord(
+                    tag,
+                    int(event.step),
+                    float(event.wall_time),
+                    float(value.reshape(-1)[0]),
+                    source_order,
+                )
+                key = (record.tag, record.step)
+                previous = records.get(key)
+                if previous is None or (record.wall_time, record.source_order) >= (
+                    previous.wall_time,
+                    previous.source_order,
+                ):
+                    records[key] = record
+    return records
+
+
+def consolidate_tensorboard_scalars(inputs, output_dir):
+    from tensorboard.compat.proto.event_pb2 import Event
+    from tensorboard.compat.proto.summary_pb2 import Summary
+    from tensorboard.summary.writer.event_file_writer import EventFileWriter
+
+    event_files = discover_tensorboard_event_files(inputs)
+    records = read_scalar_events(event_files)
+    if not records:
+        raise RuntimeError("TensorBoard inputs contain no scalar summaries")
+
+    output_path = Path(output_dir)
+    if output_path.exists() and any(output_path.iterdir()):
+        raise FileExistsError(f"TensorBoard output directory is not empty: {output_path}")
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    writer = EventFileWriter(str(output_path), filename_suffix=".canonical")
+    try:
+        for record in sorted(records.values(), key=lambda item: (item.wall_time, item.tag, item.step)):
+            summary = Summary(value=[Summary.Value(tag=record.tag, simple_value=record.value)])
+            writer.add_event(Event(wall_time=record.wall_time, step=record.step, summary=summary))
+        writer.flush()
+    finally:
+        writer.close()
+
+    canonical_files = sorted(output_path.glob("events.out.tfevents.*"))
+    if len(canonical_files) != 1:
+        raise RuntimeError(f"expected one canonical TensorBoard event file, found {len(canonical_files)}")
+    return {
+        "event_file": str(canonical_files[0]),
+        "input_files": [str(path) for path in event_files],
+        "scalar_count": len(records),
+        "tag_count": len({record.tag for record in records.values()}),
+    }
 
 
 def log_scalars(writer: Any, metrics: Dict[str, Any], step: int):

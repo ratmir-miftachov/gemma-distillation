@@ -50,7 +50,7 @@ Current default config:
 - `lr_phase1=5e-4`
 - `lr_phase2=3e-4`
 - `monarch_init_method="dense_projection"`
-- `max_modules=8`
+- `max_modules=35`
 - MLP compression only
 
 `dense_projection` initializes each rectangular Monarch layer with the
@@ -62,6 +62,20 @@ Outputs:
 - TensorBoard: `tensorboard_logs/...`
 - Checkpoints: `monarch_checkpoints.../step_*/unfrozen_weights.pt`
 
+Resume a preempted or deliberately continued run from the latest cumulative checkpoint:
+
+```bash
+python main.py \
+  --resume-from-checkpoint monarch_checkpoints.../step_003_model_language_model_layers_31_mlp/unfrozen_weights.pt \
+  --resume-start-module-index 4
+```
+
+After a resumed run, consolidate all scalar events into one canonical TensorBoard file:
+
+```bash
+python consolidate_tensorboard.py tensorboard_raw/RUN_NAME --output-dir tensorboard_logs/RUN_NAME
+```
+
 ## Code Layout
 
 - `main.py`: thin launcher that preserves the `python main.py` workflow.
@@ -72,17 +86,19 @@ Outputs:
 - `monarch_distill/validation.py`: fixed multi-length validation.
 - `monarch_distill/trainer.py`: compression orchestration, resume flow, phase loops.
 - `monarch_distill/io.py`: TensorBoard helpers, profiling logs, checkpoint saving.
+- `consolidate_tensorboard.py`: canonical scalar-event consolidation for resumed runs.
 
 ## Export A Standalone Model
 
-After all eight cumulative checkpoints are complete, export the final checkpoint as a
+After all 35 cumulative checkpoints are complete, export the final checkpoint as a
 standard sharded Hugging Face model with custom Monarch modeling code:
 
 ```bash
 python export_hf.py \
-  --checkpoint monarch_checkpoints_b8_8mlp_400p1_800p2_seq512_projinit_p2lr3e4_h100spot/step_007_model_language_model_layers_27_mlp/unfrozen_weights.pt \
-  --output-dir gemma-4-e2b-monarch-8mlp-export \
-  --repo-id hexoy/gemma-4-e2b-monarch-8mlp \
+  --checkpoint monarch_checkpoints_b8_all35mlp_400p1_800p2_seq512_projinit_p2lr3e4/step_034_model_language_model_layers_0_mlp/unfrozen_weights.pt \
+  --layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0 \
+  --output-dir gemma-4-e2b-monarch-35mlp-export \
+  --repo-id hexoy/gemma-4-e2b-monarch-35mlp \
   --upload
 ```
 
@@ -91,7 +107,8 @@ upload if the destination repository is public. Verify a local directory or priv
 Hub model from a clean cache with:
 
 ```bash
-python verify_hf_model.py hexoy/gemma-4-e2b-monarch-8mlp
+python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
+  --expected-layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 ```
 
 ## TensorBoard
