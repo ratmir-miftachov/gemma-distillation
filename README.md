@@ -11,6 +11,24 @@ Minimal code for replacing Gemma MLP linear layers with Monarch-factorized layer
 - Evaluates distillation loss on a fixed 64-example validation buffer at sequence length 512.
 - Writes TensorBoard logs and layer checkpoints locally.
 
+## Completed 35-Layer Model
+
+The full all-MLP run is complete and preserved privately:
+
+- Model: [`hexoy/gemma-4-e2b-monarch-35mlp`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp)
+- Compressed language-model MLP layers: `34` through `0`
+- Final fixed-buffer eval512 distillation loss: `1.8860`
+- Measured optimizer-phase wall time: `5.81 hours`
+- Summed source/resume TensorBoard event spans: `5.89 hours`
+- Exported parameter count: `3,682,268,704`
+- Model weights revision: `f897353fca328b1cc5fd2e12d645773ca637f5f0`
+- Model documentation revision: `bbdd8c565f282bdcc0a5974484b6ba93871895f1`
+- Full checkpoints, canonical/raw TensorBoard, logs, and hashes: [`hexoy/gemma4-monarch-artifacts@beeee38d`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/beeee38d493c6bf5696057b12c0844e134b76dfc/runs/b8-all35mlp-400p1-800p2-seq512-projinit-p2lr3e4)
+
+The run resumed from the cumulative four-layer `step_003` layer-31 checkpoint
+preserved at artifact revision `ef7f583c3cc55d7473851da69e51cc3466ab3459`.
+The eval512 value is a teacher-student distillation loss, not downstream-task accuracy.
+
 ## Setup
 
 Use a GPU machine with enough VRAM for Gemma 4 E2B.
