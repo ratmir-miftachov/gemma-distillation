@@ -12,6 +12,7 @@ from quantize_hf import (
     is_torchao_tensor,
     select_model_loader,
 )
+from storage_utils import model_storage_bytes, tensor_storage_bytes
 
 
 class FakeTorchAoTensor:
@@ -41,6 +42,33 @@ class Int8QuantizationTest(unittest.TestCase):
     def test_torchao_tensor_detection_uses_class_lineage(self):
         self.assertTrue(is_torchao_tensor(FakeTorchAoTensor()))
         self.assertFalse(is_torchao_tensor(object()))
+
+    def test_physical_storage_uses_torchao_components(self):
+        class FakeTensor:
+            def __init__(self, numel, element_size):
+                self._numel = numel
+                self._element_size = element_size
+
+            def numel(self):
+                return self._numel
+
+            def element_size(self):
+                return self._element_size
+
+        quantized = FakeTorchAoTensor()
+        quantized.tensor_data_names = ["qdata", "scale"]
+        quantized.optional_tensor_data_names = ["zero_point"]
+        quantized.qdata = FakeTensor(32, 1)
+        quantized.scale = FakeTensor(4, 2)
+        quantized.zero_point = None
+        self.assertEqual(tensor_storage_bytes(quantized), 40)
+
+    def test_model_storage_includes_parameters_and_buffers(self):
+        import torch
+
+        model = torch.nn.Linear(3, 2, bias=False)
+        model.register_buffer("marker", torch.ones(5, dtype=torch.int8))
+        self.assertEqual(model_storage_bytes(model), 6 * 4 + 5)
 
     def test_file_manifest_is_sorted_and_hashes_content(self):
         with tempfile.TemporaryDirectory() as directory:

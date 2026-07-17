@@ -10,6 +10,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from storage_utils import is_torchao_tensor, model_storage_bytes
+
 
 SOURCE_MODEL = "hexoy/gemma-4-e2b-monarch-35mlp"
 SOURCE_REVISION = "f897353fca328b1cc5fd2e12d645773ca637f5f0"
@@ -44,10 +46,6 @@ def select_model_loader(config: Any) -> str:
 
 def is_monarch_factor_name(name: str) -> bool:
     return name.endswith(".blk1") or name.endswith(".blk2")
-
-
-def is_torchao_tensor(value: Any) -> bool:
-    return any(cls.__module__.startswith("torchao") for cls in type(value).mro())
 
 
 def sha256_file(path: Path) -> str:
@@ -141,7 +139,8 @@ def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
             f"parameter count changed: expected {EXPECTED_PARAMETER_COUNT}, got {parameter_count}"
         )
 
-    footprint = int(model.get_memory_footprint(return_buffers=True))
+    physical_footprint = model_storage_bytes(model, include_buffers=True)
+    logical_footprint = int(model.get_memory_footprint(return_buffers=True))
     return {
         "parameter_count": parameter_count,
         "standard_linear_count": len(linear_names),
@@ -152,7 +151,8 @@ def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
         "monarch_factor_count": len(monarch_factors),
         "monarch_factor_numel": sum(value.numel() for value in monarch_factors.values()),
         "parameter_numel_by_storage_kind": dtype_numel,
-        "loaded_model_footprint_bytes": footprint,
+        "loaded_model_footprint_bytes": physical_footprint,
+        "logical_model_footprint_bytes": logical_footprint,
     }
 
 

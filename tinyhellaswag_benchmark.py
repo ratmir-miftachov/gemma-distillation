@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
+from storage_utils import model_storage_bytes
+
 
 TASK_NAME = "tinyHellaswag"
 NUM_EXAMPLES = 100
@@ -257,7 +259,11 @@ def model_metadata(
         "loader_class": loaded.loader_class,
         "architectures": list(getattr(loaded.config, "architectures", None) or []),
         "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
-        "loaded_model_footprint_bytes": int(
+        "loaded_model_footprint_bytes": model_storage_bytes(
+            model,
+            include_buffers=True,
+        ),
+        "logical_model_footprint_bytes": int(
             model.get_memory_footprint(return_buffers=True)
         )
         if hasattr(model, "get_memory_footprint")
