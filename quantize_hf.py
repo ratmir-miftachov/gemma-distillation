@@ -145,6 +145,7 @@ def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
         "parameter_count": parameter_count,
         "standard_linear_count": len(linear_names),
         "standard_linear_names": linear_names,
+        "quantized_linear_count": len(linear_names) - len(tied_embedding_linear_names),
         "tied_embedding_linear_count": len(tied_embedding_linear_names),
         "tied_embedding_linear_names": tied_embedding_linear_names,
         "quantized_linear_weight_numel": quantized_weight_numel,
