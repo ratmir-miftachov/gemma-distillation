@@ -22,12 +22,32 @@ The full all-MLP run is complete and preserved privately:
 - Summed source/resume TensorBoard event spans: `5.89 hours`
 - Exported parameter count: `3,682,268,704`
 - Model weights revision: `f897353fca328b1cc5fd2e12d645773ca637f5f0`
-- Model documentation revision: `bbdd8c565f282bdcc0a5974484b6ba93871895f1`
+- Model documentation revision: `91e4ba4fe25d481061bb4f515262a61a009cc5fb`
 - Full checkpoints, canonical/raw TensorBoard, logs, and hashes: [`hexoy/gemma4-monarch-artifacts@beeee38d`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/beeee38d493c6bf5696057b12c0844e134b76dfc/runs/b8-all35mlp-400p1-800p2-seq512-projinit-p2lr3e4)
 
 The run resumed from the cumulative four-layer `step_003` layer-31 checkpoint
 preserved at artifact revision `ef7f583c3cc55d7473851da69e51cc3466ab3459`.
 The eval512 value is a teacher-student distillation loss, not downstream-task accuracy.
+
+### INT8 Dense-Weight Variant
+
+The remaining supported dense linear weights were quantized privately with TorchAO
+symmetric per-output-channel INT8 weight-only quantization:
+
+- Model: [`hexoy/gemma-4-e2b-monarch-35mlp-int8`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8)
+- Quantized standard linear modules: `420`
+- Quantized linear weights: `779,419,648`
+- Preserved BF16 Monarch factors: `210` tensors / `135,106,560` parameters
+- Physical loaded weight footprint: `6.13 GiB` versus `6.86 GiB` in BF16
+- Serialized repository size: `6.17 GiB` versus `6.89 GiB` in BF16
+- TinyHellaSwag: GP-IRT `30.57%`, raw accuracy `21%`, batch `36`
+- Immutable INT8 weight revision: `db56825e2e0de59115049d7109632b2f1ce80905`
+- INT8 model-card revision: `4e3525b818b0a12af5c181ce1fe983877d0a1160`
+- Results, comparisons, logs, and hashes: [`hexoy/gemma4-monarch-artifacts@59b1c450`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/59b1c450dbd6f339270a2b7942f0ac5c3acf12d3/benchmarks/int8/20260717T110806Z)
+
+Against the same-environment BF16 35-layer control, INT8 changed raw accuracy by
+-1 point with a paired bootstrap 95% interval of `[-3, 0]` points and McNemar
+`p=1.0`. Prompted MNLI was not rerun for INT8.
 
 ## Setup
 
@@ -145,8 +165,8 @@ python quantize_hf.py \
   --upload
 ```
 
-The command refuses to publish if the parameter count changes, any standard linear
-weight remains unquantized, or any of the 210 trained Monarch factors leaves BF16.
+The command refuses to publish if the parameter count changes, any untied standard
+linear weight remains unquantized, or any of the 210 trained Monarch factors leaves BF16.
 Its manifest records the exact quantized module inventory, loaded footprint, package
 versions, file sizes, and SHA-256 hashes.
 
