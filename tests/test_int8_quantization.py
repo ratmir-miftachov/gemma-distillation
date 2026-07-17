@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from quantize_hf import (
+    TORCHAO_INT8_CONFIG_VERSION,
     audit_quantized_model,
     file_manifest,
     is_monarch_factor_name,
@@ -21,6 +22,9 @@ FakeTorchAoTensor.__module__ = "torchao.testing"
 
 
 class Int8QuantizationTest(unittest.TestCase):
+    def test_serializable_torchao_config_version_is_pinned(self):
+        self.assertEqual(TORCHAO_INT8_CONFIG_VERSION, 2)
+
     def test_loader_detection_matches_multimodal_model(self):
         config = SimpleNamespace(
             auto_map={"AutoModelForImageTextToText": "modeling.MonarchModel"},

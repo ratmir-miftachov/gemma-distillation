@@ -15,6 +15,7 @@ SOURCE_MODEL = "hexoy/gemma-4-e2b-monarch-35mlp"
 SOURCE_REVISION = "f897353fca328b1cc5fd2e12d645773ca637f5f0"
 EXPECTED_PARAMETER_COUNT = 3_682_268_704
 EXPECTED_MONARCH_FACTOR_COUNT = 210
+TORCHAO_INT8_CONFIG_VERSION = 2
 REMOTE_CODE_FILES = (
     "configuration_monarch_gemma4.py",
     "modeling_monarch_gemma4.py",
@@ -250,7 +251,10 @@ def load_quantized_model(args: argparse.Namespace, token: str):
     loader_name = select_model_loader(config)
     loader = getattr(transformers, loader_name)
     quantization_config = TorchAoConfig(
-        quant_type=Int8WeightOnlyConfig(group_size=None)
+        quant_type=Int8WeightOnlyConfig(
+            group_size=None,
+            version=TORCHAO_INT8_CONFIG_VERSION,
+        )
     )
     model = loader.from_pretrained(
         args.model_id,
@@ -393,6 +397,7 @@ def main() -> None:
         "quantization": {
             "backend": "torchao",
             "method": "Int8WeightOnlyConfig",
+            "config_version": TORCHAO_INT8_CONFIG_VERSION,
             "granularity": "symmetric_per_output_channel",
             "activation_dtype": "torch.bfloat16",
             "monarch_factor_dtype": "torch.bfloat16",
