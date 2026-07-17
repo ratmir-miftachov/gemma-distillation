@@ -85,8 +85,14 @@ def package_versions() -> dict[str, str]:
 
 
 def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
+    embedding_weight_ids = {
+        id(module.weight)
+        for module in model.modules()
+        if isinstance(module, torch_module.nn.Embedding)
+    }
     linear_names = []
     unquantized_linear_names = []
+    tied_embedding_linear_names = []
     quantized_weight_numel = 0
     for name, module in model.named_modules():
         if not isinstance(module, torch_module.nn.Linear):
@@ -94,6 +100,8 @@ def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
         linear_names.append(name)
         if is_torchao_tensor(module.weight):
             quantized_weight_numel += module.weight.numel()
+        elif id(module.weight) in embedding_weight_ids:
+            tied_embedding_linear_names.append(name)
         else:
             unquantized_linear_names.append(name)
 
@@ -137,6 +145,8 @@ def audit_quantized_model(model: Any, torch_module: Any) -> dict[str, Any]:
         "parameter_count": parameter_count,
         "standard_linear_count": len(linear_names),
         "standard_linear_names": linear_names,
+        "tied_embedding_linear_count": len(tied_embedding_linear_names),
+        "tied_embedding_linear_names": tied_embedding_linear_names,
         "quantized_linear_weight_numel": quantized_weight_numel,
         "monarch_factor_count": len(monarch_factors),
         "monarch_factor_numel": sum(value.numel() for value in monarch_factors.values()),

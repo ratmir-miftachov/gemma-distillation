@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from quantize_hf import (
+    audit_quantized_model,
     file_manifest,
     is_monarch_factor_name,
     is_torchao_tensor,
@@ -47,6 +48,23 @@ class Int8QuantizationTest(unittest.TestCase):
         self.assertEqual(
             records[0]["sha256"], hashlib.sha256(b"first").hexdigest()
         )
+
+    def test_audit_allows_only_a_linear_tied_to_an_embedding(self):
+        import torch
+
+        class TiedModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.embed = torch.nn.Embedding(8, 4)
+                self.lm_head = torch.nn.Linear(4, 8, bias=False)
+                self.lm_head.weight = self.embed.weight
+
+            def get_memory_footprint(self, return_buffers=True):
+                return sum(value.numel() * value.element_size() for value in self.parameters())
+
+        model = TiedModel()
+        with self.assertRaisesRegex(RuntimeError, "expected 210 Monarch factors"):
+            audit_quantized_model(model, torch)
 
 
 if __name__ == "__main__":
