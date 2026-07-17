@@ -225,7 +225,13 @@ def dependency_versions() -> dict[str, str]:
         "tinyBenchmarks_commit": TINYBENCHMARKS_COMMIT,
         "tinyBenchmarks_data_sha256": TINYBENCHMARKS_DATA_SHA256,
     }
-    for package in ("lm_eval", "tinyBenchmarks", "torch", "transformers"):
+    for package in (
+        "lm_eval",
+        "tinyBenchmarks",
+        "torch",
+        "torchao",
+        "transformers",
+    ):
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -239,6 +245,9 @@ def model_metadata(
     loaded: LoadedModel,
 ) -> dict[str, Any]:
     model = loaded.model
+    quantization_config = getattr(loaded.config, "quantization_config", None)
+    if hasattr(quantization_config, "to_dict"):
+        quantization_config = quantization_config.to_dict()
     return {
         "requested_id": model_id,
         "requested_revision": revision,
@@ -248,6 +257,12 @@ def model_metadata(
         "loader_class": loaded.loader_class,
         "architectures": list(getattr(loaded.config, "architectures", None) or []),
         "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+        "loaded_model_footprint_bytes": int(
+            model.get_memory_footprint(return_buffers=True)
+        )
+        if hasattr(model, "get_memory_footprint")
+        else None,
+        "quantization_config": quantization_config,
     }
 
 

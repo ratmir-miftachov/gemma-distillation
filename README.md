@@ -129,6 +129,27 @@ python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
   --expected-layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 ```
 
+## Quantize Dense Linear Weights
+
+Install the separately pinned TorchAO dependency and convert all remaining standard
+`nn.Linear` weights to symmetric per-channel INT8 while retaining Monarch factors and
+non-linear parameters in BF16:
+
+```bash
+pip install -r requirements-quantization.txt
+python quantize_hf.py \
+  --model-id hexoy/gemma-4-e2b-monarch-35mlp \
+  --revision f897353fca328b1cc5fd2e12d645773ca637f5f0 \
+  --output-dir gemma-4-e2b-monarch-35mlp-int8 \
+  --repo-id hexoy/gemma-4-e2b-monarch-35mlp-int8 \
+  --upload
+```
+
+The command refuses to publish if the parameter count changes, any standard linear
+weight remains unquantized, or any of the 210 trained Monarch factors leaves BF16.
+Its manifest records the exact quantized module inventory, loaded footprint, package
+versions, file sizes, and SHA-256 hashes.
+
 ## TensorBoard
 
 ```bash
