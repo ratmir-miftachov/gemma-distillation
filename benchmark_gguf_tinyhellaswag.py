@@ -234,21 +234,25 @@ def main() -> None:
         "-ngl",
         "all",
         "-c",
-        "8192",
+        "4096",
         "-b",
         "2048",
         "-ub",
         "512",
         "-np",
-        "128",
+        "4",
         "-t",
         str(args.threads),
     ]
     started = time.perf_counter()
-    completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    completed = subprocess.run(command, text=True, capture_output=True)
     elapsed = time.perf_counter() - started
     scorer_log = completed.stdout + completed.stderr
     (args.output_dir / "scorer.log").write_text(scorer_log, encoding="utf-8")
+    if completed.returncode:
+        raise RuntimeError(
+            f"llama.cpp multiple-choice scorer failed with exit code {completed.returncode}"
+        )
     items = parse_scorer_output(scorer_log, bundle)
     correct = [item["correct"] for item in items]
     result = {
