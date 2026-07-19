@@ -13,6 +13,7 @@ from densify_hf import (
     write_standard_config,
 )
 from gguf_recipe import (
+    expected_official_only_tied_tensors,
     normalize_tokenizer_config,
     regex_escape_tensor_name,
     write_dynamic_recipe,
@@ -86,13 +87,17 @@ class GgufRecipeTest(unittest.TestCase):
         )
 
     def test_dynamic_recipe_replays_every_official_tensor_type(self):
-        official = {
+        candidate = {
             "token_embd.weight": "Q6_K",
             "output.weight": "Q8_0",
             "blk.0.ffn_up.weight": "Q4_K",
             "blk.0.ffn_down.weight": "Q5_K",
         }
-        candidate = {name: "BF16" for name in official}
+        official = dict(candidate)
+        official.update(
+            {name: "Q4_K" for name in expected_official_only_tied_tensors()}
+        )
+        candidate = {name: "BF16" for name in candidate}
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "types.txt"
             with mock.patch(
@@ -106,8 +111,10 @@ class GgufRecipeTest(unittest.TestCase):
                     output_path=output,
                 )
             lines = output.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(recipe["tensor_count"], 4)
-        self.assertEqual(recipe["override_count"], 2)
+            self.assertEqual(recipe["official_tensor_count"], 64)
+            self.assertEqual(recipe["candidate_tensor_count"], 4)
+            self.assertEqual(recipe["official_only_tied_tensor_count"], 60)
+            self.assertEqual(recipe["override_count"], 2)
         self.assertEqual(recipe["output_tensor_type"], "q8_0")
         self.assertEqual(recipe["token_embedding_type"], "q6_k")
         self.assertEqual(

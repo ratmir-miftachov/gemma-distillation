@@ -60,6 +60,15 @@ def regex_escape_tensor_name(name: str) -> str:
     return "^" + re.escape(name) + "$"
 
 
+def expected_official_only_tied_tensors() -> set[str]:
+    """Tensors duplicated by the official GGUF but shared by the HF checkpoint."""
+    return {
+        f"blk.{layer}.{suffix}"
+        for layer in range(15, 35)
+        for suffix in ("attn_k.weight", "attn_k_norm.weight", "attn_v.weight")
+    }
+
+
 def write_dynamic_recipe(
     *,
     official_dynamic: Path,
@@ -69,7 +78,10 @@ def write_dynamic_recipe(
 ) -> dict[str, Any]:
     official_types = load_tensor_type_map(official_dynamic, llama_cpp_dir)
     candidate_types = load_tensor_type_map(candidate_bf16, llama_cpp_dir)
-    if official_types.keys() != candidate_types.keys():
+    candidate_only = candidate_types.keys() - official_types.keys()
+    official_only = official_types.keys() - candidate_types.keys()
+    expected_official_only = expected_official_only_tied_tensors()
+    if candidate_only or official_only != expected_official_only:
         difference = sorted(official_types.keys() ^ candidate_types.keys())
         raise RuntimeError(
             "official and dense-equivalent GGUF tensor names differ: "
@@ -84,12 +96,16 @@ def write_dynamic_recipe(
     entries = [
         f"{regex_escape_tensor_name(name)}={tensor_type.lower()}"
         for name, tensor_type in sorted(official_types.items())
+        if name in candidate_types
         if name not in {"output.weight", "token_embd.weight"}
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(entries) + "\n", encoding="utf-8")
     return {
-        "tensor_count": len(official_types),
+        "official_tensor_count": len(official_types),
+        "candidate_tensor_count": len(candidate_types),
+        "official_only_tied_tensor_count": len(official_only),
+        "official_only_tied_tensors": sorted(official_only),
         "override_count": len(entries),
         "output_tensor_type": output_type.lower(),
         "token_embedding_type": token_embedding_type.lower(),
