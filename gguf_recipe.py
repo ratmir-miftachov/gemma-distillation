@@ -280,11 +280,14 @@ def main() -> None:
     run_or_reuse(
         mmproj_q8,
         [
-            str(quantizer),
-            str(mmproj_bf16),
+            sys.executable,
+            str(converter),
+            str(args.dense_model_dir),
+            "--outfile",
             str(mmproj_q8),
-            "Q8_0",
-            str(args.threads),
+            "--outtype",
+            "q8_0",
+            "--mmproj",
         ],
         resume=args.resume,
     )
