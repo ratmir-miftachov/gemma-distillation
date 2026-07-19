@@ -6,6 +6,10 @@ from pathlib import Path
 from unittest import mock
 
 from benchmark_gguf import benchmark_model
+from benchmark_gguf_tinyhellaswag import (
+    parse_scorer_output,
+    write_multiple_choice_tasks,
+)
 from densify_hf import (
     EXPECTED_MONARCH_LINEAR_COUNT,
     build_standard_config,
@@ -24,6 +28,36 @@ import torch
 
 
 class GgufRecipeTest(unittest.TestCase):
+    def test_llama_multiple_choice_serialization_and_parser(self):
+        records = []
+        lines = []
+        for index in range(100):
+            gold = index % 4
+            records.append(
+                {
+                    "doc_id": index,
+                    "doc_hash": f"doc-{index}",
+                    "prompt_hash": f"prompt-{index}",
+                    "gold_choice": gold,
+                    "prompt": f"Question {index}",
+                    "continuations": [" a", " b", " c", " d"],
+                }
+            )
+            lines.append(
+                f"TINY_RESULT\t{index}\t{gold}\t{gold}\t-4\t-3\t-2\t-1"
+            )
+        bundle = {"records": records}
+        with tempfile.TemporaryDirectory() as directory:
+            tasks = Path(directory) / "tasks.bin"
+            write_multiple_choice_tasks(bundle, tasks)
+            payload = tasks.read_bytes()
+            self.assertEqual(int.from_bytes(payload[:4], "little"), 100)
+
+        items = parse_scorer_output("\n".join(lines), bundle)
+        self.assertEqual(len(items), 100)
+        self.assertTrue(all(item["correct"] for item in items))
+        self.assertEqual(items[0]["choice_normalized_scores"], [-4, -3, -2, -1])
+
     def test_transformers_five_extra_tokens_are_normalized_for_converter(self):
         with tempfile.TemporaryDirectory() as directory:
             model_dir = Path(directory)
