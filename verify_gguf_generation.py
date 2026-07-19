@@ -42,7 +42,7 @@ def completion(base_url: str, content: str | list[dict[str, Any]]) -> dict[str, 
         f"{base_url.rstrip('/')}/v1/chat/completions",
         {
             "messages": [{"role": "user", "content": content}],
-            "max_tokens": 128,
+            "max_tokens": 512,
             "temperature": 0.0,
             "seed": 1234,
         },

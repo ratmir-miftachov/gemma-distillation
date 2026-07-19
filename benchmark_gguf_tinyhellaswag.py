@@ -58,13 +58,16 @@ PATCH_REPLACEMENTS = (
 def patch_perplexity_source(llama_cpp_dir: Path) -> str:
     source = llama_cpp_dir / "tools/perplexity/perplexity.cpp"
     text = source.read_text(encoding="utf-8")
+    changed = False
     for before, after in PATCH_REPLACEMENTS:
         if after in text:
             continue
         if before not in text:
             raise RuntimeError(f"pinned llama.cpp scorer patch context is missing: {before[:80]}")
         text = text.replace(before, after, 1)
-    source.write_text(text, encoding="utf-8")
+        changed = True
+    if changed:
+        source.write_text(text, encoding="utf-8")
     patch = subprocess.run(
         ["git", "diff", "--", str(source.relative_to(llama_cpp_dir))],
         cwd=llama_cpp_dir,
@@ -277,6 +280,7 @@ def main() -> None:
             "elapsed_seconds": elapsed,
             "threads": args.threads,
             "gpu": os.environ.get("CUDA_VISIBLE_DEVICES", "all"),
+            "seed": DEFAULT_SEED,
         },
         "dependencies": {
             "llama_cpp_commit": LLAMA_CPP_COMMIT,
