@@ -23,14 +23,18 @@ def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def response_text(response: dict[str, Any]) -> str:
+def response_text(response: dict[str, Any]) -> tuple[str, str]:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError(f"generation response has no choices: {response}")
-    content = choices[0].get("message", {}).get("content")
-    if not isinstance(content, str) or not content.strip():
+    message = choices[0].get("message", {})
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content.strip(), "content"
+    reasoning = message.get("reasoning_content")
+    if not isinstance(reasoning, str) or not reasoning.strip():
         raise RuntimeError(f"generation response has no text: {response}")
-    return content.strip()
+    return reasoning.strip(), "reasoning_content"
 
 
 def completion(base_url: str, content: str | list[dict[str, Any]]) -> dict[str, Any]:
@@ -38,7 +42,7 @@ def completion(base_url: str, content: str | list[dict[str, Any]]) -> dict[str, 
         f"{base_url.rstrip('/')}/v1/chat/completions",
         {
             "messages": [{"role": "user", "content": content}],
-            "max_tokens": 48,
+            "max_tokens": 128,
             "temperature": 0.0,
             "seed": 1234,
         },
@@ -72,14 +76,18 @@ def main() -> None:
             },
         ],
     )
+    text_output, text_field = response_text(text_response)
+    image_text_output, image_text_field = response_text(image_response)
     payload = {
         "schema_version": 1,
         "model": args.model_label,
         "text_prompt": TEXT_PROMPT,
-        "text_output": response_text(text_response),
+        "text_output": text_output,
+        "text_response_field": text_field,
         "image_path": str(args.image),
         "image_prompt": IMAGE_PROMPT,
-        "image_text_output": response_text(image_response),
+        "image_text_output": image_text_output,
+        "image_text_response_field": image_text_field,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
