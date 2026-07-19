@@ -139,6 +139,32 @@ class GgufRecipeTest(unittest.TestCase):
                         output_path=Path(directory) / "types.txt",
                     )
 
+    def test_dynamic_recipe_supports_tied_output_embedding(self):
+        candidate = {
+            "token_embd.weight": "BF16",
+            "blk.0.ffn_up.weight": "BF16",
+        }
+        official = {
+            "token_embd.weight": "Q5_K",
+            "blk.0.ffn_up.weight": "Q4_K",
+            **{name: "Q4_K" for name in expected_official_only_tied_tensors()},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "types.txt"
+            with mock.patch(
+                "gguf_recipe.load_tensor_type_map",
+                side_effect=[official, candidate],
+            ):
+                recipe = write_dynamic_recipe(
+                    official_dynamic=Path("official.gguf"),
+                    candidate_bf16=Path("candidate.gguf"),
+                    llama_cpp_dir=Path("llama.cpp"),
+                    output_path=output,
+                )
+
+            self.assertIsNone(recipe["output_tensor_type"])
+            self.assertEqual(recipe["token_embedding_type"], "q5_k")
+
     def test_llama_bench_uses_controlled_five_repeat_protocol(self):
         payload = [{"n_prompt": 512, "n_gen": 0}, {"n_prompt": 0, "n_gen": 128}]
         completed = mock.Mock(stdout=json.dumps(payload))

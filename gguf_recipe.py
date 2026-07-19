@@ -90,8 +90,8 @@ def write_dynamic_recipe(
 
     output_type = official_types.get("output.weight")
     token_embedding_type = official_types.get("token_embd.weight")
-    if not output_type or not token_embedding_type:
-        raise RuntimeError("official GGUF is missing output or token embedding weights")
+    if not token_embedding_type:
+        raise RuntimeError("official GGUF is missing token embedding weights")
 
     entries = [
         f"{regex_escape_tensor_name(name)}={tensor_type.lower()}"
@@ -107,7 +107,7 @@ def write_dynamic_recipe(
         "official_only_tied_tensor_count": len(official_only),
         "official_only_tied_tensors": sorted(official_only),
         "override_count": len(entries),
-        "output_tensor_type": output_type.lower(),
+        "output_tensor_type": output_type.lower() if output_type else None,
         "token_embedding_type": token_embedding_type.lower(),
         "type_counts": {
             tensor_type: sum(value == tensor_type for value in official_types.values())
@@ -120,6 +120,20 @@ def write_dynamic_recipe(
 def run_command(command: list[str], *, cwd: Path | None = None) -> None:
     print("[GGUF]", " ".join(command), flush=True)
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def run_or_reuse(
+    output: Path,
+    command: list[str],
+    *,
+    resume: bool,
+    cwd: Path | None = None,
+) -> None:
+    if resume and output.is_file() and output.stat().st_size > 0:
+        print(f"[GGUF] Reusing existing artifact: {output}", flush=True)
+        return
+    output.unlink(missing_ok=True)
+    run_command(command, cwd=cwd)
 
 
 def normalize_tokenizer_config(model_dir: Path) -> dict[str, Any]:
@@ -154,12 +168,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--official-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=24)
+    parser.add_argument("--resume", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if args.output_dir.exists() and any(args.output_dir.iterdir()):
+    if args.output_dir.exists() and any(args.output_dir.iterdir()) and not args.resume:
         raise FileExistsError(f"output directory is not empty: {args.output_dir}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     verify_git_revision(args.llama_cpp_dir, LLAMA_CPP_COMMIT)
@@ -181,7 +196,8 @@ def main() -> None:
     tokenizer_normalization = normalize_tokenizer_config(args.dense_model_dir)
 
     bf16 = args.output_dir / "monarch-35mlp-dense-equivalent-BF16.gguf"
-    run_command(
+    run_or_reuse(
+        bf16,
         [
             sys.executable,
             str(converter),
@@ -190,11 +206,13 @@ def main() -> None:
             str(bf16),
             "--outtype",
             "bf16",
-        ]
+        ],
+        resume=args.resume,
     )
 
     mmproj_requested = args.output_dir / "mmproj-BF16.gguf"
-    run_command(
+    run_or_reuse(
+        mmproj_requested,
         [
             sys.executable,
             str(converter),
@@ -204,7 +222,8 @@ def main() -> None:
             "--outtype",
             "bf16",
             "--mmproj",
-        ]
+        ],
+        resume=args.resume,
     )
     mmproj_candidates = sorted(args.output_dir.glob("*mmproj*BF16*.gguf"))
     if len(mmproj_candidates) != 1:
@@ -212,7 +231,8 @@ def main() -> None:
     mmproj_bf16 = mmproj_candidates[0]
 
     q4 = args.output_dir / "monarch-35mlp-dense-equivalent-Q4_K_M.gguf"
-    run_command(
+    run_or_reuse(
+        q4,
         [
             str(quantizer),
             "--imatrix",
@@ -221,7 +241,8 @@ def main() -> None:
             str(q4),
             "Q4_K_M",
             str(args.threads),
-        ]
+        ],
+        resume=args.resume,
     )
 
     recipe_file = args.output_dir / "unsloth-dynamic-tensor-types.txt"
@@ -232,13 +253,17 @@ def main() -> None:
         output_path=recipe_file,
     )
     dynamic = args.output_dir / "monarch-35mlp-dense-equivalent-UD-Q4_K_XL-transfer.gguf"
-    run_command(
+    dynamic_command = [
+        str(quantizer),
+        "--imatrix",
+        str(official_paths[OFFICIAL_IMATRIX]),
+    ]
+    if recipe["output_tensor_type"]:
+        dynamic_command.extend(
+            ["--output-tensor-type", recipe["output_tensor_type"]]
+        )
+    dynamic_command.extend(
         [
-            str(quantizer),
-            "--imatrix",
-            str(official_paths[OFFICIAL_IMATRIX]),
-            "--output-tensor-type",
-            recipe["output_tensor_type"],
             "--token-embedding-type",
             recipe["token_embedding_type"],
             "--tensor-type-file",
@@ -249,16 +274,19 @@ def main() -> None:
             str(args.threads),
         ]
     )
+    run_or_reuse(dynamic, dynamic_command, resume=args.resume)
 
     mmproj_q8 = args.output_dir / "mmproj-Q8_0.gguf"
-    run_command(
+    run_or_reuse(
+        mmproj_q8,
         [
             str(quantizer),
             str(mmproj_bf16),
             str(mmproj_q8),
             "Q8_0",
             str(args.threads),
-        ]
+        ],
+        resume=args.resume,
     )
 
     artifacts = [bf16, q4, dynamic, mmproj_bf16, mmproj_q8, recipe_file]
