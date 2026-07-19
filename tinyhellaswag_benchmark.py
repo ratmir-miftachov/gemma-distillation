@@ -150,6 +150,18 @@ def build_lm_eval_model(
     )
 
 
+def build_gguf_lm(
+    *,
+    base_url: str,
+    max_length: int = 4096,
+    gguf_class: Any | None = None,
+) -> Any:
+    if gguf_class is None:
+        from lm_eval.models.gguf import GGUFLM as gguf_class
+
+    return gguf_class(base_url=base_url.rstrip("/"), max_length=max_length)
+
+
 def _as_float(value: Any) -> float:
     if hasattr(value, "item"):
         value = value.item()
@@ -302,6 +314,7 @@ def build_result(
     evaluation: Mapping[str, Any],
     model_info: Mapping[str, Any],
     runtime_info: Mapping[str, Any],
+    prompt_bundle_sha256: str | None = None,
 ) -> dict[str, Any]:
     task_results = evaluation["results"][TASK_NAME]
     items = extract_items(evaluation["samples"][TASK_NAME])
@@ -318,6 +331,7 @@ def build_result(
             "chat_template_applied": False,
             "official_gp_irt_accuracy": _metric_value(task_results, "acc_norm"),
             "raw_anchor_accuracy": raw_accuracy,
+            "prompt_bundle_sha256": prompt_bundle_sha256,
         },
         "model": dict(model_info),
         "runtime": dict(runtime_info),
@@ -418,6 +432,99 @@ def ensure_tinybenchmarks_data(
     return destination
 
 
+def _canonical_json_bytes(payload: Any) -> bytes:
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=json_default,
+    ).encode("utf-8")
+
+
+def server_tokenize(base_url: str, text: str, *, add_special: bool = False) -> list[int]:
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/tokenize",
+        data=_canonical_json_bytes(
+            {
+                "content": text,
+                "add_special": add_special,
+                "parse_special": True,
+            }
+        ),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    tokens = payload.get("tokens")
+    if not isinstance(tokens, list) or not all(isinstance(token, int) for token in tokens):
+        raise RuntimeError(f"invalid llama-server tokenization response: {payload}")
+    return tokens
+
+
+def build_prompt_bundle(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    tokenize: Any,
+    seed: int = DEFAULT_SEED,
+) -> dict[str, Any]:
+    records = []
+    for sample in sorted(samples, key=lambda row: int(row["doc_id"])):
+        arguments = sample.get("arguments")
+        if not isinstance(arguments, list) or len(arguments) != 4:
+            raise ValueError(f"expected four request arguments for doc {sample['doc_id']}")
+        prompts = [request[0] for request in arguments]
+        if len(set(prompts)) != 1:
+            raise ValueError(f"choice prompts differ for doc {sample['doc_id']}")
+        continuations = [request[1] for request in arguments]
+        prompt = prompts[0]
+        choices = list(sample["doc"]["choices"])
+        gold = _gold_index(sample, choices)
+        records.append(
+            {
+                "doc_id": int(sample["doc_id"]),
+                "doc_hash": sample.get("doc_hash"),
+                "prompt_hash": sample.get("prompt_hash"),
+                "gold_choice": gold,
+                "prompt": prompt,
+                "continuations": continuations,
+                "prompt_token_ids": list(tokenize(prompt)),
+                "request_token_ids": [
+                    list(tokenize(prompt + continuation))
+                    for continuation in continuations
+                ],
+            }
+        )
+    if len(records) != NUM_EXAMPLES:
+        raise ValueError(f"expected {NUM_EXAMPLES} canonical prompt records, got {len(records)}")
+    identity = {
+        "schema_version": 1,
+        "task": TASK_NAME,
+        "num_examples": NUM_EXAMPLES,
+        "num_fewshot": NUM_FEWSHOT,
+        "seed": seed,
+        "records": records,
+    }
+    identity["sha256"] = hashlib.sha256(_canonical_json_bytes(identity)).hexdigest()
+    return identity
+
+
+def validate_prompt_bundle(actual: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
+    if actual != expected:
+        actual_records = {record["doc_id"]: record for record in actual.get("records", [])}
+        expected_records = {record["doc_id"]: record for record in expected.get("records", [])}
+        differing = [
+            doc_id
+            for doc_id in sorted(actual_records.keys() | expected_records.keys())
+            if actual_records.get(doc_id) != expected_records.get(doc_id)
+        ]
+        raise ValueError(
+            "benchmark prompt/token bundle differs from the canonical input: "
+            f"first differing document IDs={differing[:10]}"
+        )
+
+
 def run_benchmark(
     *,
     model_id: str,
@@ -429,6 +536,10 @@ def run_benchmark(
     seed: int = DEFAULT_SEED,
     token_file: Path = DEFAULT_TOKEN_FILE,
     output_dir: Path | None = None,
+    backend: str = "hf",
+    gguf_base_url: str | None = None,
+    gguf_max_length: int = 4096,
+    canonical_prompt_bundle: Path | None = None,
 ) -> Path:
     import torch
     from lm_eval import evaluator
@@ -437,19 +548,52 @@ def run_benchmark(
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
 
+    if backend not in {"hf", "gguf"}:
+        raise ValueError(f"unsupported TinyHellaSwag backend: {backend}")
     token = resolve_hf_token(token_file)
-    loaded = load_model(
-        model_id,
-        revision=revision,
-        dtype_name=dtype_name,
-        device=device,
-        token=token,
-    )
-    lm_model = build_lm_eval_model(
-        loaded,
-        batch_size=batch_size,
-        max_batch_size=max_batch_size,
-    )
+    loaded = None
+    if backend == "hf":
+        loaded = load_model(
+            model_id,
+            revision=revision,
+            dtype_name=dtype_name,
+            device=device,
+            token=token,
+        )
+        lm_model = build_lm_eval_model(
+            loaded,
+            batch_size=batch_size,
+            max_batch_size=max_batch_size,
+        )
+        tokenize = lambda text: loaded.tokenizer.encode(
+            text,
+            add_special_tokens=False,
+        )
+        model_info = model_metadata(model_id, revision, loaded)
+        evaluation_device = device
+    else:
+        if not gguf_base_url:
+            raise ValueError("gguf_base_url is required for the GGUF backend")
+        lm_model = build_gguf_lm(
+            base_url=gguf_base_url,
+            max_length=gguf_max_length,
+        )
+        tokenize = lambda text: server_tokenize(gguf_base_url, text)
+        model_info = {
+            "requested_id": model_id,
+            "requested_revision": revision,
+            "resolved_revision": revision,
+            "config_class": None,
+            "model_class": type(lm_model).__name__,
+            "loader_class": "GGUFLM",
+            "architectures": [],
+            "parameter_count": None,
+            "loaded_model_footprint_bytes": None,
+            "logical_model_footprint_bytes": None,
+            "quantization_config": None,
+            "base_url": gguf_base_url,
+        }
+        evaluation_device = "cpu"
 
     if device.startswith("cuda"):
         torch.cuda.reset_peak_memory_stats(device)
@@ -462,7 +606,7 @@ def run_benchmark(
             num_fewshot=NUM_FEWSHOT,
             batch_size=batch_size,
             max_batch_size=max_batch_size,
-            device=device,
+            device=evaluation_device,
             bootstrap_iters=0,
             log_samples=True,
             apply_chat_template=False,
@@ -476,6 +620,16 @@ def run_benchmark(
         raise RuntimeError("lm-eval returned no results on the primary process")
     elapsed = time.perf_counter() - started
 
+    prompt_bundle = build_prompt_bundle(
+        evaluation["samples"][TASK_NAME],
+        tokenize=tokenize,
+        seed=seed,
+    )
+    if canonical_prompt_bundle is not None:
+        expected_bundle = load_result(canonical_prompt_bundle)
+        validate_prompt_bundle(prompt_bundle, expected_bundle)
+    write_json(output_dir / "prompt_bundle.json", prompt_bundle)
+
     runtime_info = runtime_metadata(
         torch_module=torch,
         seed=seed,
@@ -488,10 +642,14 @@ def run_benchmark(
     runtime_info["detected_batch_sizes"] = evaluation.get("config", {}).get(
         "batch_sizes", []
     )
+    runtime_info["backend"] = backend
+    if backend == "gguf":
+        runtime_info["peak_memory_bytes"] = None
     result = build_result(
         evaluation=evaluation,
-        model_info=model_metadata(model_id, revision, loaded),
+        model_info=model_info,
         runtime_info=runtime_info,
+        prompt_bundle_sha256=prompt_bundle["sha256"],
     )
     write_json(output_dir / "result.json", result)
     write_json(output_dir / "lm_eval_results.json", evaluation)
@@ -556,6 +714,7 @@ def compare_results(
         "num_fewshot",
         "scoring",
         "chat_template_applied",
+        "prompt_bundle_sha256",
     ):
         if baseline["benchmark"][key] != candidate["benchmark"][key]:
             raise ValueError(f"Benchmark mismatch for {key}")

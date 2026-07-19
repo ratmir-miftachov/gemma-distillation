@@ -108,6 +108,41 @@ class MonarchLinear(nn.Module):
 
         return x
 
+    @torch.no_grad()
+    def materialize_dense_weight(self, *, dtype=None, device=None):
+        """Return the exact dense matrix represented by the two factors."""
+        target_dtype = dtype or self.blk1.dtype
+        target_device = device or self.blk1.device
+        compute_dtype = (
+            torch.float32
+            if target_dtype in (torch.float16, torch.bfloat16)
+            else target_dtype
+        )
+        blk1 = self.blk1.to(device=target_device, dtype=compute_dtype)
+        blk2 = self.blk2.to(device=target_device, dtype=compute_dtype)
+        return torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
+            self.out_features,
+            self.in_features,
+        ).to(dtype=target_dtype)
+
+    @torch.no_grad()
+    def to_dense_linear(self, *, dtype=None, device=None):
+        target_dtype = dtype or self.blk1.dtype
+        target_device = device or self.blk1.device
+        dense = nn.Linear(
+            self.in_features,
+            self.out_features,
+            bias=self.bias is not None,
+            device=target_device,
+            dtype=target_dtype,
+        )
+        dense.weight.copy_(
+            self.materialize_dense_weight(dtype=target_dtype, device=target_device)
+        )
+        if self.bias is not None:
+            dense.bias.copy_(self.bias.to(device=target_device, dtype=target_dtype))
+        return dense
+
 
 class MonarchEmbedding(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, n_blocks):
@@ -161,6 +196,68 @@ def replace_linear_with_monarch(module, blocks, init_method="identity_noise", mo
         else:
             replace_linear_with_monarch(child, blocks, init_method=init_method, module_path=child_path)
     return module
+
+
+def is_monarch_linear(module):
+    return (
+        module.__class__.__name__ == "MonarchLinear"
+        and hasattr(module, "blk1")
+        and hasattr(module, "blk2")
+        and hasattr(module, "in_features")
+        and hasattr(module, "out_features")
+    )
+
+
+@torch.no_grad()
+def materialize_monarch_linear(module, *, dtype=None, device=None):
+    """Materialize local or Hugging Face remote-code MonarchLinear modules."""
+    if not is_monarch_linear(module):
+        raise TypeError(f"expected a MonarchLinear-compatible module, got {type(module)!r}")
+    target_dtype = dtype or module.blk1.dtype
+    target_device = device or module.blk1.device
+    compute_dtype = (
+        torch.float32
+        if target_dtype in (torch.float16, torch.bfloat16)
+        else target_dtype
+    )
+    blk1 = module.blk1.to(device=target_device, dtype=compute_dtype)
+    blk2 = module.blk2.to(device=target_device, dtype=compute_dtype)
+    weight = torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
+        module.out_features,
+        module.in_features,
+    ).to(dtype=target_dtype)
+    dense = nn.Linear(
+        module.in_features,
+        module.out_features,
+        bias=module.bias is not None,
+        device=target_device,
+        dtype=target_dtype,
+    )
+    dense.weight.copy_(weight)
+    if module.bias is not None:
+        dense.bias.copy_(module.bias.to(device=target_device, dtype=target_dtype))
+    return dense
+
+
+@torch.no_grad()
+def densify_monarch_linears(module, *, dtype=None, module_path=""):
+    """Replace all MonarchLinear descendants and return their qualified names."""
+    replaced = []
+    for name, child in list(module.named_children()):
+        child_path = f"{module_path}.{name}" if module_path else name
+        if is_monarch_linear(child):
+            dense = materialize_monarch_linear(child, dtype=dtype, device=child.blk1.device)
+            setattr(module, name, dense)
+            replaced.append(child_path)
+        else:
+            replaced.extend(
+                densify_monarch_linears(
+                    child,
+                    dtype=dtype,
+                    module_path=child_path,
+                )
+            )
+    return replaced
 
 
 def replace_with_monarch(
