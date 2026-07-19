@@ -73,6 +73,16 @@ class DenseProjectionTest(unittest.TestCase):
     def test_direct_dense_materialization_matches_contraction_forward(self):
         self.assert_dense_materialization(12, 8, 2)
 
+    def test_low_precision_materialization_forms_product_in_fp32(self):
+        layer = MonarchLinear(8, 12, 2, bias=False).to(torch.bfloat16)
+        with torch.no_grad():
+            layer.blk1.normal_()
+            layer.blk2.normal_()
+        expected = torch.einsum(
+            "ijk,kil->lkij", layer.blk1.float(), layer.blk2.float()
+        ).reshape(12, 8).to(torch.bfloat16)
+        self.assertTrue(torch.equal(layer.materialize_dense_weight(), expected))
+
     def assert_dense_materialization(self, in_features, out_features, n_blocks):
         layer = MonarchLinear(in_features, out_features, n_blocks, bias=True).double()
         with torch.no_grad():

@@ -6,14 +6,73 @@ from pathlib import Path
 from unittest import mock
 
 from benchmark_gguf import benchmark_model
-from densify_hf import EXPECTED_MONARCH_LINEAR_COUNT, expected_monarch_paths
-from gguf_recipe import regex_escape_tensor_name, write_dynamic_recipe
+from densify_hf import (
+    EXPECTED_MONARCH_LINEAR_COUNT,
+    build_standard_config,
+    expected_monarch_paths,
+    write_standard_config,
+)
+from gguf_recipe import (
+    normalize_tokenizer_config,
+    regex_escape_tensor_name,
+    write_dynamic_recipe,
+)
 from gguf_logit_fidelity import distribution_metrics, percentile
 
 import torch
 
 
 class GgufRecipeTest(unittest.TestCase):
+    def test_transformers_five_extra_tokens_are_normalized_for_converter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model_dir = Path(directory)
+            path = model_dir / "tokenizer_config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "model_specific_special_tokens": {"image_token": "<|image|>"},
+                        "extra_special_tokens": ["<|video|>"],
+                    }
+                )
+            )
+            metadata = normalize_tokenizer_config(model_dir)
+            saved = json.loads(path.read_text())
+
+            self.assertTrue(metadata["changed"])
+            self.assertEqual(saved["extra_special_tokens"]["image_token"], "<|image|>")
+            self.assertEqual(saved["extra_special_tokens"]["video_token"], "<|video|>")
+
+    def test_saved_dense_config_drops_remote_code_metadata(self):
+        try:
+            from transformers import Gemma4Config
+        except ImportError:
+            self.skipTest("installed Transformers does not include Gemma 4")
+
+        source = Gemma4Config()
+        source.architectures = ["MonarchGemma4ForConditionalGeneration"]
+        source.auto_map = {
+            "AutoModelForImageTextToText": (
+                "modeling_monarch_gemma4.MonarchGemma4ForConditionalGeneration"
+            )
+        }
+        source.monarch_blocks_weights = 128
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            for filename in (
+                "configuration_monarch_gemma4.py",
+                "modeling_monarch_gemma4.py",
+                "monarch.py",
+            ):
+                (output_dir / filename).write_text("stale")
+            standard = write_standard_config(output_dir, source)
+            saved = json.loads((output_dir / "config.json").read_text())
+
+            self.assertEqual(standard.architectures, ["Gemma4ForConditionalGeneration"])
+            self.assertEqual(saved["architectures"], ["Gemma4ForConditionalGeneration"])
+            self.assertNotIn("auto_map", saved)
+            self.assertNotIn("monarch_blocks_weights", saved)
+            self.assertFalse((output_dir / "modeling_monarch_gemma4.py").exists())
+
     def test_expected_dense_inventory_covers_all_35_mlps(self):
         paths = expected_monarch_paths()
         self.assertEqual(len(paths), EXPECTED_MONARCH_LINEAR_COUNT)

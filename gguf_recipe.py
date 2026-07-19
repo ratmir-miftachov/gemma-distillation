@@ -106,6 +106,28 @@ def run_command(command: list[str], *, cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
+def normalize_tokenizer_config(model_dir: Path) -> dict[str, Any]:
+    """Make Transformers 5 tokenizer metadata loadable by the pinned converter."""
+    path = model_dir / "tokenizer_config.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    extra_tokens = config.get("extra_special_tokens")
+    if not isinstance(extra_tokens, list):
+        return {"changed": False, "extra_special_token_count": 0}
+
+    named_tokens = dict(config.get("model_specific_special_tokens") or {})
+    for token in extra_tokens:
+        stripped = str(token).strip("<>|")
+        name = re.sub(r"[^a-zA-Z0-9]+", "_", stripped).strip("_") or "extra"
+        named_tokens.setdefault(f"{name}_token", token)
+    config["extra_special_tokens"] = named_tokens
+    path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "changed": True,
+        "extra_special_token_count": len(named_tokens),
+        "tokenizer_config_sha256": sha256_file(path),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create BF16, Q4_K_M, and transferred Unsloth Dynamic GGUFs"
@@ -139,6 +161,8 @@ def main() -> None:
     quantizer = args.llama_cpp_dir / "build/bin/llama-quantize"
     if not converter.is_file() or not quantizer.is_file():
         raise FileNotFoundError("pinned llama.cpp converter or quantizer is missing")
+
+    tokenizer_normalization = normalize_tokenizer_config(args.dense_model_dir)
 
     bf16 = args.output_dir / "monarch-35mlp-dense-equivalent-BF16.gguf"
     run_command(
@@ -233,6 +257,7 @@ def main() -> None:
             filename: {"sha256": OFFICIAL_SHA256[filename]}
             for filename in sorted(OFFICIAL_SHA256)
         },
+        "tokenizer_metadata_normalization": tokenizer_normalization,
         "dynamic_recipe": recipe,
         "artifacts": [
             {

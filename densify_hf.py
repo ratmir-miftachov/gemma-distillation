@@ -25,6 +25,11 @@ REFERENCE_PROMPTS = (
     "The image shows a red square. The dominant color is",
 )
 LEGAL_FILES = ("LICENSE", "NOTICE")
+REMOTE_CODE_FILES = (
+    "configuration_monarch_gemma4.py",
+    "modeling_monarch_gemma4.py",
+    "monarch.py",
+)
 
 
 def expected_monarch_paths() -> set[str]:
@@ -101,6 +106,21 @@ def build_standard_config(source_config: Any) -> Any:
         raise RuntimeError("standard configuration retained Monarch metadata")
     if getattr(standard, "auto_map", None):
         raise RuntimeError("standard configuration retained remote-code mappings")
+    return standard
+
+
+def write_standard_config(output_dir: Path, source_config: Any) -> Any:
+    """Overwrite remote-code metadata added by the source model's save hook."""
+    standard = build_standard_config(source_config)
+    standard.save_pretrained(output_dir)
+    for filename in REMOTE_CODE_FILES:
+        (output_dir / filename).unlink(missing_ok=True)
+
+    saved = json.loads((output_dir / "config.json").read_text())
+    if saved.get("architectures") != ["Gemma4ForConditionalGeneration"]:
+        raise RuntimeError("saved dense config retained the custom model architecture")
+    if saved.get("auto_map"):
+        raise RuntimeError("saved dense config retained custom AutoModel mappings")
     return standard
 
 
@@ -201,6 +221,7 @@ def main() -> None:
         max_shard_size="4GB",
     )
     processor.save_pretrained(args.output_dir)
+    model.config = write_standard_config(args.output_dir, model.config)
     copy_legal_files(args.output_dir, token)
 
     restored = AutoModelForImageTextToText.from_pretrained(

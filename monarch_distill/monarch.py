@@ -113,12 +113,17 @@ class MonarchLinear(nn.Module):
         """Return the exact dense matrix represented by the two factors."""
         target_dtype = dtype or self.blk1.dtype
         target_device = device or self.blk1.device
-        blk1 = self.blk1.to(device=target_device, dtype=target_dtype)
-        blk2 = self.blk2.to(device=target_device, dtype=target_dtype)
+        compute_dtype = (
+            torch.float32
+            if target_dtype in (torch.float16, torch.bfloat16)
+            else target_dtype
+        )
+        blk1 = self.blk1.to(device=target_device, dtype=compute_dtype)
+        blk2 = self.blk2.to(device=target_device, dtype=compute_dtype)
         return torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
             self.out_features,
             self.in_features,
-        )
+        ).to(dtype=target_dtype)
 
     @torch.no_grad()
     def to_dense_linear(self, *, dtype=None, device=None):
@@ -210,12 +215,17 @@ def materialize_monarch_linear(module, *, dtype=None, device=None):
         raise TypeError(f"expected a MonarchLinear-compatible module, got {type(module)!r}")
     target_dtype = dtype or module.blk1.dtype
     target_device = device or module.blk1.device
-    blk1 = module.blk1.to(device=target_device, dtype=target_dtype)
-    blk2 = module.blk2.to(device=target_device, dtype=target_dtype)
+    compute_dtype = (
+        torch.float32
+        if target_dtype in (torch.float16, torch.bfloat16)
+        else target_dtype
+    )
+    blk1 = module.blk1.to(device=target_device, dtype=compute_dtype)
+    blk2 = module.blk2.to(device=target_device, dtype=compute_dtype)
     weight = torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
         module.out_features,
         module.in_features,
-    )
+    ).to(dtype=target_dtype)
     dense = nn.Linear(
         module.in_features,
         module.out_features,
