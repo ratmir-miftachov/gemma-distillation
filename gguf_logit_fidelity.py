@@ -78,12 +78,16 @@ def create_hf_reference(args: argparse.Namespace) -> None:
     print(f"[GGUF KL] Wrote {len(records)} HF reference distributions to {args.output}")
 
 
-def request_full_log_probs(base_url: str, prompt: str, vocab_size: int) -> tuple[list[int], list[float]]:
+def request_full_log_probs(
+    base_url: str,
+    prompt_tokens: list[int],
+    vocab_size: int,
+) -> tuple[list[int], list[float]]:
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/completion",
         data=json.dumps(
             {
-                "prompt": prompt,
+                "prompt": prompt_tokens,
                 "n_predict": 1,
                 "n_probs": vocab_size,
                 "temperature": -1.0,
@@ -151,7 +155,7 @@ def compare_gguf(args: argparse.Namespace) -> None:
         server_ids = server_tokenize(
             args.base_url,
             expected["prompt"],
-            add_special=True,
+            add_special=False,
         )
         expected_ids = expected["token_ids"].tolist()
         if server_ids != expected_ids:
@@ -161,7 +165,7 @@ def compare_gguf(args: argparse.Namespace) -> None:
             )
         token_ids, log_probs = request_full_log_probs(
             args.base_url,
-            expected["prompt"],
+            expected_ids,
             reference["vocab_size"],
         )
         records.append(
