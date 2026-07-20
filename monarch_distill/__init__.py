@@ -1,8 +1,19 @@
 """Gemma Monarch distillation package."""
 
-from .config import CompressionConfig, default_config
+from .config import (
+    CompressionConfig,
+    LoRARecoveryConfig,
+    default_config,
+    default_lora_recovery_config,
+)
 
-__all__ = ["CompressionConfig", "MonarchCompressor", "default_config"]
+__all__ = [
+    "CompressionConfig",
+    "LoRARecoveryConfig",
+    "MonarchCompressor",
+    "default_config",
+    "default_lora_recovery_config",
+]
 
 
 def __getattr__(name):

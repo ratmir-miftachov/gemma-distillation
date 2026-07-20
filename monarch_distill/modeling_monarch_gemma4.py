@@ -23,4 +23,7 @@ class MonarchGemma4ForConditionalGeneration(Gemma4ForConditionalGeneration):
                 config.monarch_blocks_weights,
                 init_method="identity_noise",
                 module_path=f"model.language_model.layers.{layer_index}.mlp",
+                lora_rank=config.monarch_lora_rank,
+                lora_alpha=config.monarch_lora_alpha,
+                lora_dropout=config.monarch_lora_dropout,
             )

@@ -149,6 +149,35 @@ python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
   --expected-layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 ```
 
+## Recover Compression Error With LoRA
+
+The experimental recovery command freezes the released 35-layer Monarch model and
+trains native rank-8 residual adapters on its 105 MLP projections:
+
+```bash
+pip install -r requirements-recovery.txt
+python train_lora_recovery.py
+```
+
+Recovery checkpoints contain only LoRA tensors plus resumable trainer state. Resume
+from a completed checkpoint directory with:
+
+```bash
+python train_lora_recovery.py \
+  --resume-from-checkpoint lora_recovery_checkpoints_b8_all35mlp_r8/step_0000250
+```
+
+Export a selected adapter as a standalone Transformers model with:
+
+```bash
+python export_lora_hf.py \
+  --adapter lora_recovery_checkpoints_b8_all35mlp_r8/best/adapter_model.safetensors \
+  --output-dir gemma-4-e2b-monarch-35mlp-lora-r8-export
+```
+
+Rank zero remains the model-format default, so existing Monarch repositories and
+checkpoints load without LoRA parameters.
+
 ## Quantize Dense Linear Weights
 
 Install the separately pinned TorchAO dependency and convert all remaining standard

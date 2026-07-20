@@ -13,6 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Verify a standalone local or private HF Monarch model")
     parser.add_argument("model", help="Local export directory or Hugging Face model id")
     parser.add_argument("--expected-layers", default="34,33,32,31,30,29,28,27")
+    parser.add_argument("--expected-lora-rank", type=int, default=0)
     return parser.parse_args()
 
 
@@ -45,6 +46,13 @@ def main():
                     for projection in (layer.mlp.gate_proj, layer.mlp.up_proj, layer.mlp.down_proj)
                 ):
                     raise RuntimeError(f"layer {index} is only partially converted to Monarch")
+                for projection in (layer.mlp.gate_proj, layer.mlp.up_proj, layer.mlp.down_proj):
+                    actual_rank = int(getattr(projection, "lora_rank", 0))
+                    if actual_rank != args.expected_lora_rank:
+                        raise RuntimeError(
+                            f"layer {index} LoRA rank {actual_rank} != "
+                            f"{args.expected_lora_rank}"
+                        )
         if actual_layers != sorted(expected_layers):
             raise RuntimeError(f"compressed layer mismatch: {actual_layers} != {sorted(expected_layers)}")
 
