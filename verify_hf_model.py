@@ -9,6 +9,18 @@ def move_inputs(inputs, device):
     return {name: value.to(device) if hasattr(value, "to") else value for name, value in inputs.items()}
 
 
+def require_generation(tokenizer, output_ids, prompt_length, label):
+    continuation = tokenizer.decode(
+        output_ids[prompt_length:],
+        skip_special_tokens=True,
+    ).strip()
+    if not continuation:
+        raise RuntimeError(f"{label} generation produced no continuation")
+    if len(set(continuation.split())) == 1 and len(continuation.split()) >= 4:
+        raise RuntimeError(f"{label} generation is repetitious: {continuation!r}")
+    return continuation
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Verify a standalone local or private HF Monarch model")
     parser.add_argument("model", help="Local export directory or Hugging Face model id")
@@ -57,11 +69,29 @@ def main():
             raise RuntimeError(f"compressed layer mismatch: {actual_layers} != {sorted(expected_layers)}")
 
         device = next(model.parameters()).device
-        text_inputs = processor.tokenizer("Say hello in one sentence.", return_tensors="pt")
+        text_messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Say hello in one sentence."},
+                ],
+            }
+        ]
+        text_prompt = processor.apply_chat_template(
+            text_messages,
+            add_generation_prompt=True,
+        )
+        text_inputs = processor(text=text_prompt, return_tensors="pt")
         text_inputs = move_inputs(text_inputs, device)
         with torch.no_grad():
             text_output = model.generate(**text_inputs, max_new_tokens=8, do_sample=False)
-        print("[Verify] Text generation:", processor.tokenizer.decode(text_output[0], skip_special_tokens=True))
+        text_continuation = require_generation(
+            processor.tokenizer,
+            text_output[0],
+            text_inputs["input_ids"].shape[-1],
+            "text",
+        )
+        print("[Verify] Text generation:", text_continuation)
 
         image = Image.new("RGB", (224, 224), color=(220, 30, 30))
         messages = [
@@ -78,7 +108,13 @@ def main():
         image_inputs = move_inputs(image_inputs, device)
         with torch.no_grad():
             image_output = model.generate(**image_inputs, max_new_tokens=12, do_sample=False)
-        print("[Verify] Image-text generation:", processor.tokenizer.decode(image_output[0], skip_special_tokens=True))
+        image_continuation = require_generation(
+            processor.tokenizer,
+            image_output[0],
+            image_inputs["input_ids"].shape[-1],
+            "image-text",
+        )
+        print("[Verify] Image-text generation:", image_continuation)
         print(f"[Verify] Parameters: {sum(parameter.numel() for parameter in model.parameters()):,}")
         print(f"[Verify] Monarch layers: {actual_layers}")
 
