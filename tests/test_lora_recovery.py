@@ -133,10 +133,13 @@ class MonarchLoRATest(unittest.TestCase):
 
     def test_production_parameter_budget(self):
         rank = 8
-        per_layer = rank * (
+        narrow_layer = rank * (
             (1536 + 6144) + (1536 + 6144) + (6144 + 1536)
         )
-        self.assertEqual(per_layer * 35, 6_451_200)
+        wide_layer = rank * (
+            (1536 + 12288) + (1536 + 12288) + (12288 + 1536)
+        )
+        self.assertEqual((narrow_layer * 15) + (wide_layer * 20), 9_400_320)
 
 
 class RecoveryMetricsTest(unittest.TestCase):

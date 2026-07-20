@@ -28,7 +28,7 @@ from .modeling_monarch_gemma4 import MonarchGemma4ForConditionalGeneration
 
 
 EXPECTED_LORA_MODULES = 105
-EXPECTED_LORA_PARAMETERS_R8 = 6_451_200
+EXPECTED_LORA_PARAMETERS_R8 = 9_400_320
 
 
 def resolve_hf_token() -> str | None:

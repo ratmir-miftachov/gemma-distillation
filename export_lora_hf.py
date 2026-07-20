@@ -17,7 +17,7 @@ from monarch_distill.recovery import load_recovery_student, resolve_hf_token
 
 
 DEFAULT_REPO_ID = "hexoy/gemma-4-e2b-monarch-35mlp-lora-r8"
-EXPECTED_TOTAL_PARAMETERS = 3_688_719_904
+EXPECTED_TOTAL_PARAMETERS = 3_691_669_024
 
 
 def write_model_card(output_dir: Path, repo_id: str, parameter_count: int):
@@ -40,8 +40,9 @@ Monarch representation, with a native rank-8 LoRA residual on each gate, up, and
 projection. The frozen Monarch model was jointly distilled against the original dense
 Gemma 4 teacher.
 
-The model has {parameter_count:,} parameters. LoRA contributes 6,451,200 trainable
-parameters (about 12.3 MiB in BF16) across 105 projections.
+The model has {parameter_count:,} parameters. LoRA contributes 9,400,320 trainable
+parameters (about 17.9 MiB in BF16) across 105 projections. Gemma 4 uses 6,144-wide
+MLPs in layers 0-14 and double-wide 12,288 MLPs in layers 15-34.
 
 ```python
 from transformers import AutoModelForImageTextToText, AutoProcessor
