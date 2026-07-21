@@ -27,12 +27,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--hf-token-file", type=Path, default=DEFAULT_TOKEN_FILE)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--backend", choices=("hf", "gguf"), default="hf")
-    parser.add_argument(
-        "--gguf-base-url",
-        help="Running pinned llama-server URL, required for --backend gguf",
-    )
-    parser.add_argument("--gguf-max-length", type=int, default=4096)
     parser.add_argument(
         "--canonical-prompt-bundle",
         type=Path,
@@ -56,9 +50,6 @@ def main() -> None:
         seed=args.seed,
         token_file=args.hf_token_file,
         output_dir=args.output_dir,
-        backend=args.backend,
-        gguf_base_url=args.gguf_base_url,
-        gguf_max_length=args.gguf_max_length,
         canonical_prompt_bundle=args.canonical_prompt_bundle,
     )
     print(f"TinyHellaSwag result: {result_path}")

@@ -12,7 +12,6 @@ import torch
 
 from tinyhellaswag_benchmark import (
     LoadedModel,
-    build_gguf_lm,
     build_lm_eval_model,
     build_prompt_bundle,
     compare_results,
@@ -23,7 +22,6 @@ from tinyhellaswag_benchmark import (
     load_model,
     resolve_hf_token,
     select_model_loader,
-    server_tokenize,
     validate_prompt_bundle,
     working_directory,
     write_json,
@@ -180,23 +178,6 @@ class TinyHellaSwagBenchmarkTest(unittest.TestCase):
         self.assertEqual(calls[1]["backend"], "causal")
         self.assertEqual(calls[0]["batch_size"], calls[1]["batch_size"])
 
-    def test_gguf_adapter_uses_the_pinned_server_backend(self):
-        calls = []
-
-        class FakeGGUF:
-            def __init__(self, **kwargs):
-                calls.append(kwargs)
-
-        build_gguf_lm(
-            base_url="http://127.0.0.1:8080/",
-            max_length=8192,
-            gguf_class=FakeGGUF,
-        )
-        self.assertEqual(
-            calls,
-            [{"base_url": "http://127.0.0.1:8080", "max_length": 8192}],
-        )
-
     def test_prompt_bundle_pins_strings_hashes_labels_and_token_ids(self):
         samples = []
         for doc_id in range(100):
@@ -225,18 +206,6 @@ class TinyHellaSwagBenchmarkTest(unittest.TestCase):
         changed["records"][0]["prompt_token_ids"][0] += 1
         with self.assertRaisesRegex(ValueError, "first differing"):
             validate_prompt_bundle(changed, bundle)
-
-    def test_llama_server_tokenizer_uses_no_implicit_special_token(self):
-        response = io.BytesIO(json.dumps({"tokens": [7, 8, 9]}).encode("utf-8"))
-        with mock.patch(
-            "tinyhellaswag_benchmark.urllib.request.urlopen",
-            return_value=response,
-        ) as urlopen:
-            self.assertEqual(server_tokenize("http://localhost:8080/", "abc"), [7, 8, 9])
-        request = urlopen.call_args.args[0]
-        payload = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(request.full_url, "http://localhost:8080/tokenize")
-        self.assertFalse(payload["add_special"])
 
     def test_item_scores_match_official_character_normalization(self):
         sample = {

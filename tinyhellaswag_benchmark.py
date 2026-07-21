@@ -150,18 +150,6 @@ def build_lm_eval_model(
     )
 
 
-def build_gguf_lm(
-    *,
-    base_url: str,
-    max_length: int = 4096,
-    gguf_class: Any | None = None,
-) -> Any:
-    if gguf_class is None:
-        from lm_eval.models.gguf import GGUFLM as gguf_class
-
-    return gguf_class(base_url=base_url.rstrip("/"), max_length=max_length)
-
-
 def _as_float(value: Any) -> float:
     if hasattr(value, "item"):
         value = value.item()
@@ -442,27 +430,6 @@ def _canonical_json_bytes(payload: Any) -> bytes:
     ).encode("utf-8")
 
 
-def server_tokenize(base_url: str, text: str, *, add_special: bool = False) -> list[int]:
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/tokenize",
-        data=_canonical_json_bytes(
-            {
-                "content": text,
-                "add_special": add_special,
-                "parse_special": True,
-            }
-        ),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    tokens = payload.get("tokens")
-    if not isinstance(tokens, list) or not all(isinstance(token, int) for token in tokens):
-        raise RuntimeError(f"invalid llama-server tokenization response: {payload}")
-    return tokens
-
-
 def build_prompt_bundle(
     samples: Sequence[Mapping[str, Any]],
     *,
@@ -536,9 +503,6 @@ def run_benchmark(
     seed: int = DEFAULT_SEED,
     token_file: Path = DEFAULT_TOKEN_FILE,
     output_dir: Path | None = None,
-    backend: str = "hf",
-    gguf_base_url: str | None = None,
-    gguf_max_length: int = 4096,
     canonical_prompt_bundle: Path | None = None,
 ) -> Path:
     import torch
@@ -548,52 +512,24 @@ def run_benchmark(
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
 
-    if backend not in {"hf", "gguf"}:
-        raise ValueError(f"unsupported TinyHellaSwag backend: {backend}")
     token = resolve_hf_token(token_file)
-    loaded = None
-    if backend == "hf":
-        loaded = load_model(
-            model_id,
-            revision=revision,
-            dtype_name=dtype_name,
-            device=device,
-            token=token,
-        )
-        lm_model = build_lm_eval_model(
-            loaded,
-            batch_size=batch_size,
-            max_batch_size=max_batch_size,
-        )
-        tokenize = lambda text: loaded.tokenizer.encode(
-            text,
-            add_special_tokens=False,
-        )
-        model_info = model_metadata(model_id, revision, loaded)
-        evaluation_device = device
-    else:
-        if not gguf_base_url:
-            raise ValueError("gguf_base_url is required for the GGUF backend")
-        lm_model = build_gguf_lm(
-            base_url=gguf_base_url,
-            max_length=gguf_max_length,
-        )
-        tokenize = lambda text: server_tokenize(gguf_base_url, text)
-        model_info = {
-            "requested_id": model_id,
-            "requested_revision": revision,
-            "resolved_revision": revision,
-            "config_class": None,
-            "model_class": type(lm_model).__name__,
-            "loader_class": "GGUFLM",
-            "architectures": [],
-            "parameter_count": None,
-            "loaded_model_footprint_bytes": None,
-            "logical_model_footprint_bytes": None,
-            "quantization_config": None,
-            "base_url": gguf_base_url,
-        }
-        evaluation_device = "cpu"
+    loaded = load_model(
+        model_id,
+        revision=revision,
+        dtype_name=dtype_name,
+        device=device,
+        token=token,
+    )
+    lm_model = build_lm_eval_model(
+        loaded,
+        batch_size=batch_size,
+        max_batch_size=max_batch_size,
+    )
+    tokenize = lambda text: loaded.tokenizer.encode(
+        text,
+        add_special_tokens=False,
+    )
+    model_info = model_metadata(model_id, revision, loaded)
 
     if device.startswith("cuda"):
         torch.cuda.reset_peak_memory_stats(device)
@@ -606,7 +542,7 @@ def run_benchmark(
             num_fewshot=NUM_FEWSHOT,
             batch_size=batch_size,
             max_batch_size=max_batch_size,
-            device=evaluation_device,
+            device=device,
             bootstrap_iters=0,
             log_samples=True,
             apply_chat_template=False,
@@ -642,9 +578,7 @@ def run_benchmark(
     runtime_info["detected_batch_sizes"] = evaluation.get("config", {}).get(
         "batch_sizes", []
     )
-    runtime_info["backend"] = backend
-    if backend == "gguf":
-        runtime_info["peak_memory_bytes"] = None
+    runtime_info["backend"] = "hf"
     result = build_result(
         evaluation=evaluation,
         model_info=model_info,
