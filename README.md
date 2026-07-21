@@ -15,7 +15,7 @@ Minimal code for replacing Gemma MLP linear layers with Monarch-factorized layer
 
 ## Completed 35-Layer Model
 
-The full all-MLP run is complete and preserved privately:
+The full all-MLP run is complete and published publicly:
 
 - Model: [`hexoy/gemma-4-e2b-monarch-35mlp`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp)
 - Compressed language-model MLP layers: `34` through `0`
@@ -24,17 +24,17 @@ The full all-MLP run is complete and preserved privately:
 - Summed source/resume TensorBoard event spans: `5.89 hours`
 - Exported parameter count: `3,682,268,704`
 - Model weights revision: `f897353fca328b1cc5fd2e12d645773ca637f5f0`
-- Model documentation revision: `91e4ba4fe25d481061bb4f515262a61a009cc5fb`
-- Full checkpoints, canonical/raw TensorBoard, logs, and hashes: [`hexoy/gemma4-monarch-artifacts@beeee38d`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/beeee38d493c6bf5696057b12c0844e134b76dfc/runs/b8-all35mlp-400p1-800p2-seq512-projinit-p2lr3e4)
+- Model documentation revision: `1e15ed1b06c3dcb1da73fad8b8663e02d3eeb22c`
+- Private training artifacts (authorization required): [`hexoy/gemma4-monarch-artifacts@beeee38d`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/beeee38d493c6bf5696057b12c0844e134b76dfc/runs/b8-all35mlp-400p1-800p2-seq512-projinit-p2lr3e4)
 
 The run resumed from the cumulative four-layer `step_003` layer-31 checkpoint
-preserved at artifact revision `ef7f583c3cc55d7473851da69e51cc3466ab3459`.
+preserved privately at artifact revision `ef7f583c3cc55d7473851da69e51cc3466ab3459`.
 The eval512 value is a teacher-student distillation loss, not downstream-task accuracy.
 
 ### INT8 Dense-Weight Variant
 
-The remaining supported dense linear weights were quantized privately with TorchAO
-symmetric per-output-channel INT8 weight-only quantization:
+The remaining supported dense linear weights were quantized with TorchAO
+symmetric per-output-channel INT8 weight-only quantization and published publicly:
 
 - Model: [`hexoy/gemma-4-e2b-monarch-35mlp-int8`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8)
 - Quantized standard linear modules: `420`
@@ -42,14 +42,28 @@ symmetric per-output-channel INT8 weight-only quantization:
 - Preserved BF16 Monarch factors: `210` tensors / `135,106,560` parameters
 - Physical loaded weight footprint: `6.13 GiB` versus `6.86 GiB` in BF16
 - Serialized repository size: `6.17 GiB` versus `6.89 GiB` in BF16
-- TinyHellaSwag: GP-IRT `30.57%`, raw accuracy `21%`, batch `36`
+- TinyHellaSwag: GP-IRT `30.57%`, raw accuracy `21%`, fixed batch `32`
 - Immutable INT8 weight revision: `db56825e2e0de59115049d7109632b2f1ce80905`
-- INT8 model-card revision: `4e3525b818b0a12af5c181ce1fe983877d0a1160`
-- Results, comparisons, logs, and hashes: [`hexoy/gemma4-monarch-artifacts@59b1c450`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/59b1c450dbd6f339270a2b7942f0ac5c3acf12d3/benchmarks/int8/20260717T110806Z)
+- INT8 model-card revision: `8d615239c61abb9f959a5c52d184ea8eef51e2a7`
+- Private benchmark evidence (authorization required): [`hexoy/gemma4-monarch-artifacts@59b1c450`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/59b1c450dbd6f339270a2b7942f0ac5c3acf12d3/benchmarks/int8/20260717T110806Z)
 
 Against the same-environment BF16 35-layer control, INT8 changed raw accuracy by
 -1 point with a paired bootstrap 95% interval of `[-3, 0]` points and McNemar
 `p=1.0`. Prompted MNLI was not rerun for INT8.
+
+### Rank-8 LoRA Recovery Variant
+
+The experimental rank-8 recovery model is also public:
+
+- Model: [`hexoy/gemma-4-e2b-monarch-35mlp-lora-r8`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-lora-r8)
+- Native LoRA pairs: `105`
+- Added LoRA parameters: `9,400,320`
+- TinyHellaSwag: GP-IRT `33.25%`, raw accuracy `23%`, fixed batch `32`
+- Model-card revision: `9cd381dc0d598635651ececcef2754995c21d6ff`
+
+This model remains experimental: the small benchmark improvement did not meet the
+original release threshold, and longer deterministic text and image generation was
+not reliably recovered.
 
 ## Setup
 
@@ -142,9 +156,9 @@ python export_hf.py \
   --upload
 ```
 
-The exporter refuses non-cumulative or incorrectly shaped checkpoints and refuses to
-upload if the destination repository is public. Verify a local directory or private
-Hub model from a clean cache with:
+The exporter refuses non-cumulative or incorrectly shaped checkpoints and refuses
+direct upload to a public destination. Export and verify locally, then publish in a
+separate release step. Verify a local directory or Hub model from a clean cache with:
 
 ```bash
 python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
