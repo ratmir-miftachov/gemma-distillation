@@ -5,7 +5,16 @@ import torch.nn as nn
 
 
 class MonarchLinear(nn.Module):
-    def __init__(self, in_features, out_features, n_blocks, bias=True):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        n_blocks,
+        bias=True,
+        lora_rank=0,
+        lora_alpha=1.0,
+        lora_dropout=0.0,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -27,7 +36,16 @@ class MonarchLinear(nn.Module):
         self.blk1 = nn.Parameter(torch.empty(self.n1, self.n2, self.n2))
         self.blk2 = nn.Parameter(torch.empty(self.n2, self.n1, self.n3))
         self.bias = nn.Parameter(torch.empty(out_features)) if bias else None
+        self.lora_rank = 0
+        self.lora_alpha = float(lora_alpha)
+        self.lora_scaling = 0.0
+        self.lora_dropout_p = float(lora_dropout)
+        self.lora_dropout = nn.Identity()
+        self.register_parameter("lora_A", None)
+        self.register_parameter("lora_B", None)
         self.reset_parameters()
+        if lora_rank:
+            self.enable_lora(lora_rank, lora_alpha, lora_dropout)
 
     def reset_parameters(self):
         # Hugging Face constructs modules on the meta device for low-memory loading.
@@ -55,6 +73,40 @@ class MonarchLinear(nn.Module):
 
         if self.bias is not None:
             nn.init.zeros_(self.bias)
+
+    def enable_lora(self, rank, alpha, dropout=0.0):
+        rank = int(rank)
+        alpha = float(alpha)
+        dropout = float(dropout)
+        if rank <= 0:
+            raise ValueError(f"LoRA rank must be positive, got {rank}")
+        if dropout < 0.0 or dropout >= 1.0:
+            raise ValueError(f"LoRA dropout must be in [0, 1), got {dropout}")
+        if self.lora_rank:
+            if (self.lora_rank, self.lora_alpha, self.lora_dropout_p) != (
+                rank,
+                alpha,
+                dropout,
+            ):
+                raise ValueError("MonarchLinear already has a different LoRA configuration")
+            return self
+
+        device = self.blk1.device
+        dtype = self.blk1.dtype
+        self.lora_A = nn.Parameter(
+            torch.empty(rank, self.in_features, device=device, dtype=dtype)
+        )
+        self.lora_B = nn.Parameter(
+            torch.zeros(self.out_features, rank, device=device, dtype=dtype)
+        )
+        if not self.lora_A.is_meta:
+            nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        self.lora_rank = rank
+        self.lora_alpha = alpha
+        self.lora_scaling = alpha / rank
+        self.lora_dropout_p = dropout
+        self.lora_dropout = nn.Dropout(dropout) if dropout else nn.Identity()
+        return self
 
     @torch.no_grad()
     def initialize_from_dense(self, dense_layer: nn.Linear) -> float:
@@ -95,6 +147,7 @@ class MonarchLinear(nn.Module):
         return (residual_energy / total_energy).clamp_min(0.0).sqrt().item()
 
     def forward(self, x):
+        lora_input = x
         orig_shape = x.shape
         x = x.contiguous().view(-1, self.n1, self.n2)
         x = torch.einsum("bij, ijk -> bik", x, self.blk1)
@@ -105,6 +158,13 @@ class MonarchLinear(nn.Module):
 
         if self.bias is not None:
             x = x + self.bias
+
+        if self.lora_rank:
+            lora_hidden = torch.nn.functional.linear(
+                self.lora_dropout(lora_input),
+                self.lora_A,
+            )
+            x = x + torch.nn.functional.linear(lora_hidden, self.lora_B) * self.lora_scaling
 
         return x
 
@@ -120,10 +180,15 @@ class MonarchLinear(nn.Module):
         )
         blk1 = self.blk1.to(device=target_device, dtype=compute_dtype)
         blk2 = self.blk2.to(device=target_device, dtype=compute_dtype)
-        return torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
+        weight = torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
             self.out_features,
             self.in_features,
-        ).to(dtype=target_dtype)
+        )
+        if self.lora_rank:
+            lora_A = self.lora_A.to(device=target_device, dtype=compute_dtype)
+            lora_B = self.lora_B.to(device=target_device, dtype=compute_dtype)
+            weight = weight + torch.matmul(lora_B, lora_A) * self.lora_scaling
+        return weight.to(dtype=target_dtype)
 
     @torch.no_grad()
     def to_dense_linear(self, *, dtype=None, device=None):
@@ -179,13 +244,29 @@ class MonarchEmbedding(nn.Module):
         return out
 
 
-def replace_linear_with_monarch(module, blocks, init_method="identity_noise", module_path=""):
+def replace_linear_with_monarch(
+    module,
+    blocks,
+    init_method="identity_noise",
+    module_path="",
+    lora_rank=0,
+    lora_alpha=1.0,
+    lora_dropout=0.0,
+):
     for name, child in module.named_children():
         child_path = f"{module_path}.{name}" if module_path else name
         if isinstance(child, nn.Linear):
             device = child.weight.device
             dtype = child.weight.dtype
-            monarch_layer = MonarchLinear(child.in_features, child.out_features, blocks, bias=child.bias is not None)
+            monarch_layer = MonarchLinear(
+                child.in_features,
+                child.out_features,
+                blocks,
+                bias=child.bias is not None,
+                lora_rank=lora_rank,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+            )
             monarch_layer = monarch_layer.to(device=device, dtype=dtype)
             if init_method == "dense_projection":
                 relative_error = monarch_layer.initialize_from_dense(child)
@@ -194,7 +275,15 @@ def replace_linear_with_monarch(module, blocks, init_method="identity_noise", mo
                 raise ValueError(f"unsupported Monarch initialization method: {init_method}")
             setattr(module, name, monarch_layer)
         else:
-            replace_linear_with_monarch(child, blocks, init_method=init_method, module_path=child_path)
+            replace_linear_with_monarch(
+                child,
+                blocks,
+                init_method=init_method,
+                module_path=child_path,
+                lora_rank=lora_rank,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+            )
     return module
 
 
@@ -225,7 +314,12 @@ def materialize_monarch_linear(module, *, dtype=None, device=None):
     weight = torch.einsum("ijk,kil->lkij", blk1, blk2).reshape(
         module.out_features,
         module.in_features,
-    ).to(dtype=target_dtype)
+    )
+    if int(getattr(module, "lora_rank", 0)):
+        lora_A = module.lora_A.to(device=target_device, dtype=compute_dtype)
+        lora_B = module.lora_B.to(device=target_device, dtype=compute_dtype)
+        weight = weight + torch.matmul(lora_B, lora_A) * float(module.lora_scaling)
+    weight = weight.to(dtype=target_dtype)
     dense = nn.Linear(
         module.in_features,
         module.out_features,

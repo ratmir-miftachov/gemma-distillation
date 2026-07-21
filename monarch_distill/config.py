@@ -48,3 +48,31 @@ class CompressionConfig:
 
 def default_config() -> CompressionConfig:
     return CompressionConfig()
+
+
+@dataclass
+class LoRARecoveryConfig(CompressionConfig):
+    run_label: str = "b8-all35mlp-lora-r8-recovery"
+    teacher_model_name: str = "google/gemma-4-E2B-it"
+    teacher_revision: str = "9dbdf8a839e4e9e0eb56ed80cc8886661d3817cf"
+    student_model_name: str = "hexoy/gemma-4-e2b-monarch-35mlp"
+    student_revision: str = "f897353fca328b1cc5fd2e12d645773ca637f5f0"
+    lora_rank: int = 8
+    lora_alpha: float = 16.0
+    lora_dropout: float = 0.0
+    recovery_steps: int = 2000
+    recovery_lr: float = 3e-4
+    recovery_weight_decay: float = 0.0
+    recovery_grad_clip: float = 1.0
+    recovery_seed: int = 1234
+    training_data_seed: int = 5678
+    checkpoint_interval: int = 250
+    validation_interval: int = 250
+    tensorboard_log_dir: str = "./tensorboard_logs/b8-all35mlp-lora-r8-recovery"
+    save_dir: str = "./lora_recovery_checkpoints_b8_all35mlp_r8"
+    resume_from_checkpoint: Optional[str] = None
+    prefetch_batches: int = 0
+
+
+def default_lora_recovery_config() -> LoRARecoveryConfig:
+    return LoRARecoveryConfig()

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -28,13 +28,14 @@ DEFAULT_DATASETS = [
 
 
 class UnifiedDatasetStreamer(IterableDataset):
-    def __init__(self, tokenizer, config: CompressionConfig):
+    def __init__(self, tokenizer, config: CompressionConfig, selection_seed: Optional[int] = None):
         self.tokenizer = tokenizer
         self.config = config
         self.max_epochs = config.max_epochs
         self.dataset_specs = DEFAULT_DATASETS
         self.streams = []
         self.stream_epochs = [0] * len(self.dataset_specs)
+        self.selection_seed = selection_seed
 
         for spec in self.dataset_specs:
             self.streams.append((spec.kind, self._open_stream(spec), spec))
@@ -66,9 +67,18 @@ class UnifiedDatasetStreamer(IterableDataset):
 
     def __iter__(self):
         active_streams = list(range(len(self.streams)))
+        selection_generator = None
+        if self.selection_seed is not None:
+            selection_generator = torch.Generator()
+            selection_generator.manual_seed(int(self.selection_seed))
 
         while active_streams:
-            idx = torch.randint(0, len(active_streams), (1,)).item()
+            idx = torch.randint(
+                0,
+                len(active_streams),
+                (1,),
+                generator=selection_generator,
+            ).item()
             stream_idx = active_streams[idx]
             kind, stream, spec = self.streams[stream_idx]
 
@@ -127,9 +137,12 @@ def build_validation_buffer(tokenizer, config: CompressionConfig):
     rng_state = torch.random.get_rng_state()
     torch.manual_seed(config.validation_seed)
 
-    validation_config = CompressionConfig(**config.to_dict())
-    validation_config.max_seq_len = storage_seq_len
-    validation_dataset = UnifiedDatasetStreamer(tokenizer, validation_config)
+    validation_config = replace(config, max_seq_len=storage_seq_len)
+    validation_dataset = UnifiedDatasetStreamer(
+        tokenizer,
+        validation_config,
+        selection_seed=config.validation_seed,
+    )
     validation_loader = DataLoader(validation_dataset, batch_size=validation_batch_size)
     validation_iter = iter(validation_loader)
 
@@ -154,6 +167,10 @@ def build_validation_buffer(tokenizer, config: CompressionConfig):
     return validation_examples
 
 
-def make_training_loader(tokenizer, config: CompressionConfig) -> DataLoader:
-    dataset = UnifiedDatasetStreamer(tokenizer, config)
+def make_training_loader(
+    tokenizer,
+    config: CompressionConfig,
+    selection_seed: Optional[int] = None,
+) -> DataLoader:
+    dataset = UnifiedDatasetStreamer(tokenizer, config, selection_seed=selection_seed)
     return DataLoader(dataset, batch_size=config.batch_size)
