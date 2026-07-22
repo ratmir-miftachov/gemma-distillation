@@ -4,6 +4,15 @@ Tools for replacing Gemma language-model MLP projections with two-factor Monarch
 maps, distilling the compressed model from the original teacher, and exporting,
 quantizing, and evaluating the result.
 
+## Motivation
+
+This project began with a practical target: reduce the Gemma 4 E2B BF16 weight
+footprint enough to fit within the Nano Super 8 GB GPU memory budget. The
+original E2B BF16 weights are listed at 9.6 GB, so they do not fit without
+compression or quantization.
+
+![Gemma 4 memory-fit comparison across NVIDIA edge GPUs](docs/assets/nano-super-8gb-motivation.png)
+
 ## Published Models
 
 | Variant | Status | Hugging Face | Description |
