@@ -10,7 +10,7 @@ from unittest import mock
 
 import torch
 
-from tinyhellaswag_benchmark import (
+from monarch_distill.benchmarks.tinyhellaswag import (
     LoadedModel,
     build_lm_eval_model,
     build_prompt_bundle,
@@ -266,7 +266,7 @@ class TinyHellaSwagBenchmarkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache_dir = Path(directory)
             with mock.patch(
-                "tinyhellaswag_benchmark.urllib.request.urlopen",
+                "monarch_distill.benchmarks.tinyhellaswag.urllib.request.urlopen",
                 return_value=io.BytesIO(payload),
             ) as urlopen:
                 path = ensure_tinybenchmarks_data(
@@ -278,7 +278,7 @@ class TinyHellaSwagBenchmarkTest(unittest.TestCase):
             urlopen.assert_called_once()
 
             with mock.patch(
-                "tinyhellaswag_benchmark.urllib.request.urlopen",
+                "monarch_distill.benchmarks.tinyhellaswag.urllib.request.urlopen",
                 side_effect=AssertionError("cache should avoid another download"),
             ):
                 self.assertEqual(

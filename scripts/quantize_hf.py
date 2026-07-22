@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from storage_utils import is_torchao_tensor, model_storage_bytes
+from monarch_distill.storage import is_torchao_tensor, model_storage_bytes
 
 
 SOURCE_MODEL = "hexoy/gemma-4-e2b-monarch-35mlp"

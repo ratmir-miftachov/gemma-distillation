@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from quantize_hf import (
+from scripts.quantize_hf import (
     TORCHAO_INT8_CONFIG_VERSION,
     audit_quantized_model,
     file_manifest,
@@ -12,7 +12,7 @@ from quantize_hf import (
     is_torchao_tensor,
     select_model_loader,
 )
-from storage_utils import model_storage_bytes, tensor_storage_bytes
+from monarch_distill.storage import model_storage_bytes, tensor_storage_bytes
 
 
 class FakeTorchAoTensor:

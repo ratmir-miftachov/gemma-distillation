@@ -76,7 +76,7 @@ source mlenv/bin/activate
 # Install PyTorch for your CUDA version first:
 # https://pytorch.org/get-started/locally/
 
-pip install -r requirements.txt
+pip install -r requirements/base.txt
 ```
 
 Authenticate with Hugging Face before running:
@@ -127,20 +127,16 @@ python main.py \
 After a resumed run, consolidate all scalar events into one canonical TensorBoard file:
 
 ```bash
-python consolidate_tensorboard.py tensorboard_raw/RUN_NAME --output-dir tensorboard_logs/RUN_NAME
+python -m scripts.consolidate_tensorboard tensorboard_raw/RUN_NAME --output-dir tensorboard_logs/RUN_NAME
 ```
 
 ## Code Layout
 
-- `main.py`: thin launcher that preserves the `python main.py` workflow.
-- `monarch_distill/config.py`: typed experiment configuration.
-- `monarch_distill/data.py`: streamed datasets, formatting, tokenization, validation-buffer construction.
-- `monarch_distill/monarch.py`: Monarch layers and model replacement helpers.
-- `monarch_distill/losses.py`: CKA, KL, entropy, and attention KL losses.
-- `monarch_distill/validation.py`: fixed multi-length validation.
-- `monarch_distill/trainer.py`: compression orchestration, resume flow, phase loops.
-- `monarch_distill/io.py`: TensorBoard helpers, profiling logs, checkpoint saving.
-- `consolidate_tensorboard.py`: canonical scalar-event consolidation for resumed runs.
+- `main.py`: stable thin launcher that preserves the `python main.py` workflow.
+- `monarch_distill/`: reusable distillation, model, loss, storage, and benchmark code.
+- `scripts/`: supported command modules, run as `python -m scripts.<command>`.
+- `requirements/`: base, benchmark, quantization, and recovery dependency sets.
+- `tests/`: fast unit coverage for the reusable package and command contracts.
 
 ## Export A Standalone Model
 
@@ -148,7 +144,7 @@ After all 35 cumulative checkpoints are complete, export the final checkpoint as
 standard sharded Hugging Face model with custom Monarch modeling code:
 
 ```bash
-python export_hf.py \
+python -m scripts.export_hf \
   --checkpoint monarch_checkpoints_b8_all35mlp_400p1_800p2_seq512_projinit_p2lr3e4/step_034_model_language_model_layers_0_mlp/unfrozen_weights.pt \
   --layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0 \
   --output-dir gemma-4-e2b-monarch-35mlp-export \
@@ -161,7 +157,7 @@ direct upload to a public destination. Export and verify locally, then publish i
 separate release step. Verify a local directory or Hub model from a clean cache with:
 
 ```bash
-python verify_hf_model.py hexoy/gemma-4-e2b-monarch-35mlp \
+python -m scripts.verify_hf_model hexoy/gemma-4-e2b-monarch-35mlp \
   --expected-layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 ```
 
@@ -171,22 +167,22 @@ The experimental recovery command freezes the released 35-layer Monarch model an
 trains native rank-8 residual adapters on its 105 MLP projections:
 
 ```bash
-pip install -r requirements-recovery.txt
-python train_lora_recovery.py
+pip install -r requirements/recovery.txt
+python -m scripts.train_lora_recovery
 ```
 
 Recovery checkpoints contain only LoRA tensors plus resumable trainer state. Resume
 from a completed checkpoint directory with:
 
 ```bash
-python train_lora_recovery.py \
+python -m scripts.train_lora_recovery \
   --resume-from-checkpoint lora_recovery_checkpoints_b8_all35mlp_r8/step_0000250
 ```
 
 Export a selected adapter as a standalone Transformers model with:
 
 ```bash
-python export_lora_hf.py \
+python -m scripts.export_lora_hf \
   --adapter lora_recovery_checkpoints_b8_all35mlp_r8/best/adapter_model.safetensors \
   --output-dir gemma-4-e2b-monarch-35mlp-lora-r8-export
 ```
@@ -201,8 +197,8 @@ Install the separately pinned TorchAO dependency and convert all remaining stand
 non-linear parameters in BF16:
 
 ```bash
-pip install -r requirements-quantization.txt
-python quantize_hf.py \
+pip install -r requirements/quantization.txt
+python -m scripts.quantize_hf \
   --model-id hexoy/gemma-4-e2b-monarch-35mlp \
   --revision f897353fca328b1cc5fd2e12d645773ca637f5f0 \
   --output-dir gemma-4-e2b-monarch-35mlp-int8 \
@@ -226,7 +222,7 @@ tensorboard --logdir tensorboard_logs --host 127.0.0.1 --port 6006
 Install the separately pinned benchmark environment:
 
 ```bash
-pip install -r requirements-benchmark.txt
+pip install -r requirements/benchmark.txt
 ```
 
 Run the official 100-example, 10-shot `tinyHellaswag` task. The evaluator uses
@@ -234,15 +230,15 @@ raw continuation prompts for both models and selects the appropriate Hugging
 Face Auto class automatically:
 
 ```bash
-python benchmark_tinyhellaswag.py --model google/gemma-4-E2B-it
-python benchmark_tinyhellaswag.py --model hexoy/gemma-4-e2b-monarch-4mlp
+python -m scripts.benchmark_tinyhellaswag --model google/gemma-4-E2B-it
+python -m scripts.benchmark_tinyhellaswag --model hexoy/gemma-4-e2b-monarch-4mlp
 ```
 
 Each run writes `result.json` and the underlying `lm_eval_results.json` beneath
 `benchmark_results/tinyhellaswag/`. Compare two runs with:
 
 ```bash
-python compare_tinyhellaswag.py \
+python -m scripts.compare_tinyhellaswag \
   benchmark_results/tinyhellaswag/google-gemma-4-E2B-it/<timestamp>/result.json \
   benchmark_results/tinyhellaswag/hexoy-gemma-4-e2b-monarch-4mlp/<timestamp>/result.json \
   --output comparison.json

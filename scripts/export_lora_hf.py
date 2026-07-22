@@ -188,7 +188,10 @@ def main():
     verify_round_trip(model, processor, args.output_dir)
 
     write_model_card(args.output_dir, args.repo_id, parameter_count)
-    shutil.copy2(Path(__file__).with_name("LICENSE"), args.output_dir / "LICENSE")
+    shutil.copy2(
+        Path(__file__).resolve().parents[1] / "LICENSE",
+        args.output_dir / "LICENSE",
+    )
     (args.output_dir / "NOTICE").write_text(
         "Derived from google/gemma-4-E2B-it and "
         "hexoy/gemma-4-e2b-monarch-35mlp. Added native rank-8 LoRA residuals "

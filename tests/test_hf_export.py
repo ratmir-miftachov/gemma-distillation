@@ -2,7 +2,7 @@ import unittest
 
 try:
     from monarch_distill.configuration_monarch_gemma4 import MonarchGemma4Config
-    from export_hf import checkpoint_tensor_names, replaced_dense_weight_names
+    from scripts.export_hf import checkpoint_tensor_names, replaced_dense_weight_names
 except ImportError as exc:
     raise unittest.SkipTest(f"Gemma 4 requires a newer Transformers environment: {exc}")
 

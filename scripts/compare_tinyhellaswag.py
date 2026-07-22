@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tinyhellaswag_benchmark import (
+from monarch_distill.benchmarks.tinyhellaswag import (
     DEFAULT_SEED,
     compare_results,
     load_result,

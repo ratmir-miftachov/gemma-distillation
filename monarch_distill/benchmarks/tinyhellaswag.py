@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
-from storage_utils import model_storage_bytes
+from ..storage import model_storage_bytes
 
 
 TASK_NAME = "tinyHellaswag"

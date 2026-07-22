@@ -154,7 +154,7 @@ the modification summary.
 
 
 def write_legal_files(output_dir: Path, base_model: str, layer_indices):
-    shutil.copy2(Path(__file__).with_name("LICENSE"), output_dir / "LICENSE")
+    shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", output_dir / "LICENSE")
     layers = ", ".join(str(index) for index in layer_indices)
     notice = f"""Gemma 4 E2B Monarch model
 
