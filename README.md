@@ -1,93 +1,40 @@
-**Co-Author: Yusuf Kalyoncuoglu**
-
 # Gemma Distillation
 
-Minimal code for replacing Gemma MLP linear layers with Monarch-factorized layers and distilling the compressed student against the original teacher.
+Tools for replacing Gemma language-model MLP projections with two-factor Monarch
+maps, distilling the compressed model from the original teacher, and exporting,
+quantizing, and evaluating the result.
 
-## What It Does
+## Published Models
 
-- Loads `google/gemma-4-E2B-it` as both teacher and student.
-- Replaces selected student MLP layers with Monarch-linear modules.
-- Phase 1 trains the newly replaced MLP locally with activation CKA loss.
-- Phase 2 globally repairs the student with full-model logit KL distillation.
-- Evaluates distillation loss on a fixed 64-example validation buffer at sequence length 512.
-- Writes TensorBoard logs and layer checkpoints locally.
+| Variant | Status | Hugging Face | Description |
+| --- | --- | --- | --- |
+| 35-layer Monarch BF16 | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp) | All 35 language-model MLPs use two-factor Monarch projections. |
+| 35-layer Monarch + INT8 linears | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8) | Weight-only INT8 quantization for 420 remaining standard linear layers. |
+| 35-layer Monarch + LoRA r8 | Experimental | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-lora-r8) | Rank-8 recovery adapters; not reliable for extended text or image-text generation. |
 
-## Completed 35-Layer Model
+The model cards contain loading instructions, storage measurements, limitations,
+and TinyHellaSwag results.
 
-The full all-MLP run is complete and published publicly:
+## Quick Start
 
-- Model: [`hexoy/gemma-4-e2b-monarch-35mlp`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp)
-- Compressed language-model MLP layers: `34` through `0`
-- Final fixed-buffer eval512 distillation loss: `1.8860`
-- Measured optimizer-phase wall time: `5.81 hours`
-- Summed source/resume TensorBoard event spans: `5.89 hours`
-- Exported parameter count: `3,682,268,704`
-- Model weights revision: `f897353fca328b1cc5fd2e12d645773ca637f5f0`
-- Model documentation revision: `1e15ed1b06c3dcb1da73fad8b8663e02d3eeb22c`
-- Private training artifacts (authorization required): [`hexoy/gemma4-monarch-artifacts@beeee38d`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/beeee38d493c6bf5696057b12c0844e134b76dfc/runs/b8-all35mlp-400p1-800p2-seq512-projinit-p2lr3e4)
-
-The run resumed from the cumulative four-layer `step_003` layer-31 checkpoint
-preserved privately at artifact revision `ef7f583c3cc55d7473851da69e51cc3466ab3459`.
-The eval512 value is a teacher-student distillation loss, not downstream-task accuracy.
-
-### INT8 Dense-Weight Variant
-
-The remaining supported dense linear weights were quantized with TorchAO
-symmetric per-output-channel INT8 weight-only quantization and published publicly:
-
-- Model: [`hexoy/gemma-4-e2b-monarch-35mlp-int8`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8)
-- Quantized standard linear modules: `420`
-- Quantized linear weights: `779,419,648`
-- Preserved BF16 Monarch factors: `210` tensors / `135,106,560` parameters
-- Physical loaded weight footprint: `6.13 GiB` versus `6.86 GiB` in BF16
-- Serialized repository size: `6.17 GiB` versus `6.89 GiB` in BF16
-- TinyHellaSwag: GP-IRT `30.57%`, raw accuracy `21%`, fixed batch `32`
-- Immutable INT8 weight revision: `db56825e2e0de59115049d7109632b2f1ce80905`
-- INT8 model-card revision: `8d615239c61abb9f959a5c52d184ea8eef51e2a7`
-- Private benchmark evidence (authorization required): [`hexoy/gemma4-monarch-artifacts@59b1c450`](https://huggingface.co/datasets/hexoy/gemma4-monarch-artifacts/tree/59b1c450dbd6f339270a2b7942f0ac5c3acf12d3/benchmarks/int8/20260717T110806Z)
-
-Against the same-environment BF16 35-layer control, INT8 changed raw accuracy by
--1 point with a paired bootstrap 95% interval of `[-3, 0]` points and McNemar
-`p=1.0`. Prompted MNLI was not rerun for INT8.
-
-### Rank-8 LoRA Recovery Variant
-
-The experimental rank-8 recovery model is also public:
-
-- Model: [`hexoy/gemma-4-e2b-monarch-35mlp-lora-r8`](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-lora-r8)
-- Native LoRA pairs: `105`
-- Added LoRA parameters: `9,400,320`
-- TinyHellaSwag: GP-IRT `33.25%`, raw accuracy `23%`, fixed batch `32`
-- Model-card revision: `9cd381dc0d598635651ececcef2754995c21d6ff`
-
-This model remains experimental: the small benchmark improvement did not meet the
-original release threshold, and longer deterministic text and image generation was
-not reliably recovered.
-
-## Setup
-
-Use a GPU machine with enough VRAM for Gemma 4 E2B.
+Install a CUDA-compatible PyTorch build for your environment, then install the
+base dependencies:
 
 ```bash
-python3 -m venv mlenv
-source mlenv/bin/activate
-
-# Install PyTorch for your CUDA version first:
-# https://pytorch.org/get-started/locally/
-
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements/base.txt
 ```
 
-Authenticate with Hugging Face before running:
+Set a Hugging Face token when the source model or a Hub operation requires one:
 
 ```bash
-export HF_TOKEN="$(cat ~/.config/nebius-gemma/hf_read_token)"
+export HF_TOKEN=your_huggingface_token
 ```
 
-The token must have access to `google/gemma-4-E2B-it`.
+## Workflows
 
-## Run Compression
+### Distill Monarch MLPs
 
 Edit `CompressionConfig` defaults in `monarch_distill/config.py`, then run:
 
@@ -95,159 +42,68 @@ Edit `CompressionConfig` defaults in `monarch_distill/config.py`, then run:
 python main.py
 ```
 
-Current default config:
-
-- `batch_size=8`
-- `max_seq_len=512`
-- `phase1_steps=400`
-- `phase2_steps=800`
-- `lr_phase1=5e-4`
-- `lr_phase2=3e-4`
-- `monarch_init_method="dense_projection"`
-- `max_modules=35`
-- MLP compression only
-
-`dense_projection` initializes each rectangular Monarch layer with the
-minimum-Frobenius-error rank-one projection of the pretrained dense weight.
-Set `monarch_init_method="identity_noise"` to use the original initializer.
-
-Outputs:
-
-- TensorBoard: `tensorboard_logs/...`
-- Checkpoints: `monarch_checkpoints.../step_*/unfrozen_weights.pt`
-
-Resume a preempted or deliberately continued run from the latest cumulative checkpoint:
+The trainer writes TensorBoard events and cumulative layer checkpoints locally.
+For resumed runs, consolidate scalar events with:
 
 ```bash
-python main.py \
-  --resume-from-checkpoint monarch_checkpoints.../step_003_model_language_model_layers_31_mlp/unfrozen_weights.pt \
-  --resume-start-module-index 4
+python -m scripts.consolidate_tensorboard tensorboard_raw/RUN_NAME \
+  --output-dir tensorboard_logs/RUN_NAME
 ```
 
-After a resumed run, consolidate all scalar events into one canonical TensorBoard file:
+### Export and Validate
+
+Export a cumulative checkpoint or verify an exported Hugging Face model:
 
 ```bash
-python -m scripts.consolidate_tensorboard tensorboard_raw/RUN_NAME --output-dir tensorboard_logs/RUN_NAME
+python -m scripts.export_hf --help
+python -m scripts.verify_hf_model --help
 ```
 
-## Code Layout
-
-- `main.py`: stable thin launcher that preserves the `python main.py` workflow.
-- `monarch_distill/`: reusable distillation, model, loss, storage, and benchmark code.
-- `scripts/`: supported command modules, run as `python -m scripts.<command>`.
-- `requirements/`: base, benchmark, quantization, and recovery dependency sets.
-- `tests/`: fast unit coverage for the reusable package and command contracts.
-
-## Export A Standalone Model
-
-After all 35 cumulative checkpoints are complete, export the final checkpoint as a
-standard sharded Hugging Face model with custom Monarch modeling code:
-
-```bash
-python -m scripts.export_hf \
-  --checkpoint monarch_checkpoints_b8_all35mlp_400p1_800p2_seq512_projinit_p2lr3e4/step_034_model_language_model_layers_0_mlp/unfrozen_weights.pt \
-  --layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0 \
-  --output-dir gemma-4-e2b-monarch-35mlp-export \
-  --repo-id hexoy/gemma-4-e2b-monarch-35mlp \
-  --upload
-```
-
-The exporter refuses non-cumulative or incorrectly shaped checkpoints and refuses
-direct upload to a public destination. Export and verify locally, then publish in a
-separate release step. Verify a local directory or Hub model from a clean cache with:
-
-```bash
-python -m scripts.verify_hf_model hexoy/gemma-4-e2b-monarch-35mlp \
-  --expected-layers 34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
-```
-
-## Recover Compression Error With LoRA
-
-The experimental recovery command freezes the released 35-layer Monarch model and
-trains native rank-8 residual adapters on its 105 MLP projections:
+### Recover With LoRA
 
 ```bash
 pip install -r requirements/recovery.txt
 python -m scripts.train_lora_recovery
+python -m scripts.export_lora_hf --help
 ```
 
-Recovery checkpoints contain only LoRA tensors plus resumable trainer state. Resume
-from a completed checkpoint directory with:
-
-```bash
-python -m scripts.train_lora_recovery \
-  --resume-from-checkpoint lora_recovery_checkpoints_b8_all35mlp_r8/step_0000250
-```
-
-Export a selected adapter as a standalone Transformers model with:
-
-```bash
-python -m scripts.export_lora_hf \
-  --adapter lora_recovery_checkpoints_b8_all35mlp_r8/best/adapter_model.safetensors \
-  --output-dir gemma-4-e2b-monarch-35mlp-lora-r8-export
-```
-
-Rank zero remains the model-format default, so existing Monarch repositories and
-checkpoints load without LoRA parameters.
-
-## Quantize Dense Linear Weights
-
-Install the separately pinned TorchAO dependency and convert all remaining standard
-`nn.Linear` weights to symmetric per-channel INT8 while retaining Monarch factors and
-non-linear parameters in BF16:
+### Quantize Remaining Linear Weights
 
 ```bash
 pip install -r requirements/quantization.txt
-python -m scripts.quantize_hf \
-  --model-id hexoy/gemma-4-e2b-monarch-35mlp \
-  --revision f897353fca328b1cc5fd2e12d645773ca637f5f0 \
-  --output-dir gemma-4-e2b-monarch-35mlp-int8 \
-  --repo-id hexoy/gemma-4-e2b-monarch-35mlp-int8 \
-  --upload
+python -m scripts.quantize_hf --help
 ```
 
-The command refuses to publish if the parameter count changes, any untied standard
-linear weight remains unquantized, or any of the 210 trained Monarch factors leaves BF16.
-Its manifest records the exact quantized module inventory, loaded footprint, package
-versions, file sizes, and SHA-256 hashes.
-
-## TensorBoard
-
-```bash
-tensorboard --logdir tensorboard_logs --host 127.0.0.1 --port 6006
-```
-
-## TinyHellaSwag Benchmark
-
-Install the separately pinned benchmark environment:
+### Benchmark TinyHellaSwag
 
 ```bash
 pip install -r requirements/benchmark.txt
-```
-
-Run the official 100-example, 10-shot `tinyHellaswag` task. The evaluator uses
-raw continuation prompts for both models and selects the appropriate Hugging
-Face Auto class automatically:
-
-```bash
 python -m scripts.benchmark_tinyhellaswag --model google/gemma-4-E2B-it
-python -m scripts.benchmark_tinyhellaswag --model hexoy/gemma-4-e2b-monarch-4mlp
+python -m scripts.compare_tinyhellaswag --help
 ```
 
-Each run writes `result.json` and the underlying `lm_eval_results.json` beneath
-`benchmark_results/tinyhellaswag/`. Compare two runs with:
+## Repository Layout
 
-```bash
-python -m scripts.compare_tinyhellaswag \
-  benchmark_results/tinyhellaswag/google-gemma-4-E2B-it/<timestamp>/result.json \
-  benchmark_results/tinyhellaswag/hexoy-gemma-4-e2b-monarch-4mlp/<timestamp>/result.json \
-  --output comparison.json
+```text
+main.py             Stable compression entrypoint
+monarch_distill/    Reusable distillation, model, loss, storage, and benchmark code
+scripts/            Export, quantization, recovery, validation, and benchmark commands
+requirements/       Dependency sets for each workflow
+tests/              Unit coverage for package and command contracts
 ```
-
-The comparison reports official GP-IRT and raw-accuracy deltas, item-level
-disagreements, a paired bootstrap confidence interval, and exact McNemar test.
 
 ## Notes
 
-- This repo intentionally excludes checkpoints, TensorBoard logs, caches, datasets, and experiment history.
-- Store large artifacts in Hugging Face datasets or external storage, not in Git.
+- Compression targets language-model MLPs only; attention, embeddings, vision,
+  audio, and the LM head remain unchanged unless a workflow explicitly says otherwise.
+- This repository excludes weights, checkpoints, datasets, TensorBoard logs, and
+  experiment artifacts. Store large outputs outside Git.
+- Monarch models include custom code and require `trust_remote_code=True` when
+  loaded through Transformers. Review the model card and code before enabling it.
+
+## Credits and License
+
+Co-author: Yusuf Kalyoncuoglu.
+
+Derived models are based on [Google Gemma 4 E2B IT](https://huggingface.co/google/gemma-4-E2B-it).
+This repository is licensed under [Apache-2.0](LICENSE).
