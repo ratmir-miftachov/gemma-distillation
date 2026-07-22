@@ -11,7 +11,7 @@ footprint enough to fit within the Nano Super 8 GB GPU memory budget. The
 original E2B BF16 weights are listed at 9.6 GB, so they do not fit without
 compression or quantization.
 
-![Gemma 4 memory-fit comparison across NVIDIA edge GPUs](docs/assets/nano-super-8gb-motivation.png)
+![Gemma 4 memory-fit comparison across NVIDIA edge GPUs](docs/assets/nano-super-8gb-bf16-gap.png)
 
 ## Published Models
 
