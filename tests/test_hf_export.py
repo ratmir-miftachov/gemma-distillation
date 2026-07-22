@@ -13,7 +13,7 @@ class HuggingFaceExportTest(unittest.TestCase):
         self.assertEqual(len(checkpoint_tensor_names(layers)), 48)
         self.assertEqual(len(replaced_dense_weight_names(layers)), 24)
 
-    def test_four_layer_checkpoint_contract(self):
+    def test_subset_checkpoint_contract(self):
         layers = [34, 33, 32, 31]
         self.assertEqual(len(checkpoint_tensor_names(layers)), 24)
         self.assertEqual(len(replaced_dense_weight_names(layers)), 12)
