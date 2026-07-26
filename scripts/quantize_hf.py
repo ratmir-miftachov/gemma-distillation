@@ -13,7 +13,7 @@ from typing import Any
 from monarch_distill.storage import is_torchao_tensor, model_storage_bytes
 
 
-SOURCE_MODEL = "hexoy/gemma-4-e2b-monarch-35mlp"
+SOURCE_MODEL = "hexoy/gemma-4-e2b-distilled"
 SOURCE_REVISION = "f897353fca328b1cc5fd2e12d645773ca637f5f0"
 EXPECTED_PARAMETER_COUNT = 3_682_268_704
 EXPECTED_MONARCH_FACTOR_COUNT = 210
@@ -196,7 +196,7 @@ tags:
 - torchao
 ---
 
-# Gemma 4 E2B Monarch 35-MLP INT8
+# Gemma 4 E2B Distilled INT8
 
 Private experimental INT8 weight-only version of
 [`{source_model}`](https://huggingface.co/{source_model}) at immutable revision

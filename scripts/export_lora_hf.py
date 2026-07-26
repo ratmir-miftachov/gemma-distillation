@@ -23,7 +23,7 @@ EXPECTED_TOTAL_PARAMETERS = 3_691_669_024
 def write_model_card(output_dir: Path, repo_id: str, parameter_count: int):
     text = f"""---
 license: apache-2.0
-base_model: hexoy/gemma-4-e2b-monarch-35mlp
+base_model: hexoy/gemma-4-e2b-distilled
 library_name: transformers
 pipeline_tag: image-text-to-text
 tags:
@@ -33,7 +33,7 @@ tags:
 - model-compression
 ---
 
-# Gemma 4 E2B Monarch 35-MLP + LoRA R8
+# Gemma 4 E2B Distilled + LoRA R8
 
 Private experimental recovery model. All 35 language MLPs use the released two-factor
 Monarch representation, with a native rank-8 LoRA residual on each gate, up, and down
@@ -194,7 +194,7 @@ def main():
     )
     (args.output_dir / "NOTICE").write_text(
         "Derived from google/gemma-4-E2B-it and "
-        "hexoy/gemma-4-e2b-monarch-35mlp. Added native rank-8 LoRA residuals "
+        "hexoy/gemma-4-e2b-distilled. Added native rank-8 LoRA residuals "
         "to all 105 compressed language-MLP projections.\n",
         encoding="utf-8",
     )

@@ -17,9 +17,9 @@ compression or quantization.
 
 | Variant | Status | Hugging Face | Description |
 | --- | --- | --- | --- |
-| 35-layer Monarch BF16 | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp) | All 35 language-model MLPs use two-factor Monarch projections. |
-| 35-layer Monarch + INT8 linears | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8) | Weight-only INT8 quantization for 420 remaining standard linear layers. |
-| 35-layer Monarch + LoRA r8 | Experimental | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-lora-r8) | Rank-8 recovery adapters; not reliable for extended text or image-text generation. |
+| Distilled Gemma 4 BF16 | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-distilled) | All 35 language-model MLPs use two-factor Monarch projections. |
+| Distilled Gemma 4 + INT8 linears | Released | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-int8) | Weight-only INT8 quantization for 420 remaining standard linear layers. |
+| Distilled Gemma 4 + LoRA r8 | Experimental | [Model card](https://huggingface.co/hexoy/gemma-4-e2b-monarch-35mlp-lora-r8) | Rank-8 recovery adapters; not reliable for extended text or image-text generation. |
 
 The model cards contain loading instructions, storage measurements, limitations,
 and TinyHellaSwag results.

@@ -55,7 +55,7 @@ class LoRARecoveryConfig(CompressionConfig):
     run_label: str = "b8-all35mlp-lora-r8-recovery"
     teacher_model_name: str = "google/gemma-4-E2B-it"
     teacher_revision: str = "9dbdf8a839e4e9e0eb56ed80cc8886661d3817cf"
-    student_model_name: str = "hexoy/gemma-4-e2b-monarch-35mlp"
+    student_model_name: str = "hexoy/gemma-4-e2b-distilled"
     student_revision: str = "f897353fca328b1cc5fd2e12d645773ca637f5f0"
     lora_rank: int = 8
     lora_alpha: float = 16.0
